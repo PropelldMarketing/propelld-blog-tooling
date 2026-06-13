@@ -1,0 +1,59 @@
+name: Manual script run
+
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: 'Which script to run'
+        required: true
+        type: choice
+        options:
+          - publish_facet_items
+          - check_facet_content
+          - audit_internal_links
+          - priority_scorer
+          - link_recommender
+          - bulk_apply_links
+          - link_health_report
+      apply:
+        description: 'Run with --apply (actually write changes). Defaults to dry-run.'
+        required: false
+        type: boolean
+        default: false
+      extra_args:
+        description: 'Extra CLI args to pass to the script (optional)'
+        required: false
+        type: string
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Run ${{ inputs.script }}
+        env:
+          WEBFLOW_API_TOKEN: ${{ secrets.WEBFLOW_API_TOKEN }}
+          AHREFS_API_TOKEN: ${{ secrets.AHREFS_API_TOKEN }}
+        run: |
+          ARGS=""
+          if [ "${{ inputs.apply }}" = "true" ]; then ARGS="--apply"; fi
+          if [ -n "${{ inputs.extra_args }}" ]; then ARGS="$ARGS ${{ inputs.extra_args }}"; fi
+          python scripts/${{ inputs.script }}.py $ARGS
+
+      - name: Upload any output artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.script }}-${{ github.run_id }}
+          path: out/
+          if-no-files-found: ignore
+          retention-days: 30

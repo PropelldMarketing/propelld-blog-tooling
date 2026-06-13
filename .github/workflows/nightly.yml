@@ -1,0 +1,44 @@
+name: Nightly refresh
+
+on:
+  schedule:
+    # 02:00 IST = 20:30 UTC (previous day)
+    - cron: '30 20 * * *'
+  workflow_dispatch:
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: refresh_hub_data
+        env:
+          WEBFLOW_API_TOKEN: ${{ secrets.WEBFLOW_API_TOKEN }}
+        run: python scripts/refresh_hub_data.py --apply
+
+      - name: refresh_links (integrate new posts)
+        env:
+          WEBFLOW_API_TOKEN: ${{ secrets.WEBFLOW_API_TOKEN }}
+          AHREFS_API_TOKEN: ${{ secrets.AHREFS_API_TOKEN }}
+        run: python scripts/refresh_links.py --apply
+        continue-on-error: true
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK" ]; then
+            curl -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\":x: Nightly refresh failed for propelld-blog-tooling. Check run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+              "$SLACK_WEBHOOK"
+          fi

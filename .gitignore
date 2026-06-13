@@ -1,0 +1,27 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.coverage
+.tox/
+venv/
+.venv/
+
+# Outputs (these go to S3 / shared drive, not git)
+out/
+snapshots/
+*.xlsx.tmp
+
+# Secrets
+.env
+.env.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp

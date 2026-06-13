@@ -1,0 +1,48 @@
+name: Weekly link health report
+
+on:
+  schedule:
+    # Monday 04:00 IST = 22:30 UTC Sunday
+    - cron: '30 22 * * 0'
+  workflow_dispatch:
+
+jobs:
+  health-report:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: link_health_report
+        env:
+          WEBFLOW_API_TOKEN: ${{ secrets.WEBFLOW_API_TOKEN }}
+          AHREFS_API_TOKEN: ${{ secrets.AHREFS_API_TOKEN }}
+        run: python scripts/link_health_report.py --output out/link-health-report.xlsx
+
+      - name: Upload report artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: link-health-report-${{ github.run_id }}
+          path: out/link-health-report.xlsx
+          retention-days: 90
+
+      - name: Notify Slack
+        if: always()
+        env:
+          SLACK_WEBHOOK: ${{ secrets.SLACK_WEBHOOK }}
+        run: |
+          if [ -n "$SLACK_WEBHOOK" ]; then
+            STATUS="${{ job.status }}"
+            EMOJI=":white_check_mark:"
+            if [ "$STATUS" != "success" ]; then EMOJI=":warning:"; fi
+            curl -X POST -H 'Content-type: application/json' \
+              --data "{\"text\":\"$EMOJI Weekly link-health report: $STATUS. Download: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}\"}" \
+              "$SLACK_WEBHOOK"
+          fi
