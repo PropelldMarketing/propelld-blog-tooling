@@ -1,24 +1,148 @@
 """
-audit_internal_links.py
-Placeholder. Full spec in propelld-blog-internal-linking-strategy-v3.docx §9.
+audit_internal_links.py -- inventory + classify every internal link in blog bodies.
 
-This script will be implemented during Phase audit_i of the rollout.
-It's stubbed here so the repo skeleton matches the strategy doc and so
-GitHub Actions workflows can reference it without errors.
+Fetches Blog Posts via Webflow API (or reads snapshot). Extracts links from
+BOTH body halves (post-body + post-body-2nd-half). Classifies each per
+strategy doc sec 7 (KEEP / KILL / REWRITE / REVIEW).
 
-USAGE: see strategy doc §9 for the input and output spec.
+USAGE:
+  python scripts/audit_internal_links.py --tier-file out/posts-with-tiers.xlsx \
+      --output out/internal-links-inventory.csv \
+      --audit-summary out/audit-summary.xlsx --apply
+
+  # From snapshot:
+  python scripts/audit_internal_links.py --tier-file out/posts-with-tiers.xlsx \
+      --from-snapshot snapshots/2026-06-15/ --apply
+
+Env: WEBFLOW_API_TOKEN (only for live)
 """
 
-import argparse
-import sys
+import argparse, json, sys
+from pathlib import Path
+import pandas as pd
+
+sys.path.insert(0, str(Path(__file__).parent.parent))
+from lib.webflow_client import WebflowClient, COLLECTIONS, BLOG_BODY_FIELDS, get_blog_body
+from lib.link_utils import extract_links
+
+ANCHOR_GARBAGE = {"click here","read more","this article","link","website","here","more","learn more"}
+
+def load_tier_map(f):
+    df = pd.read_excel(f) if f.endswith(".xlsx") else pd.read_csv(f)
+    for old,new in [("URL","url"),("Tier","tier"),("Category","category")]:
+        if old in df.columns and new not in df.columns:
+            df = df.rename(columns={old:new})
+    df["url"] = df["url"].str.rstrip("/")
+    return df.set_index("url")[["tier","category"]].to_dict("index")
+
+def inventory_from_snapshot(snap_dir):
+    records = []
+    for jp in Path(snap_dir).glob("*.json"):
+        if jp.name == "manifest.json": continue
+        rec = json.load(open(jp))
+        src = "/site/blog/" + rec["slug"]
+        for field in BLOG_BODY_FIELDS:
+            html = rec.get(field, "")
+            for link in extract_links(html):
+                records.append({"source_url":src, "source_body_field":field,
+                    "target_url":link["href"], "anchor_text":link["anchor"],
+                    "position_in_field":link["position"]})
+    return records
+
+def inventory_from_live(client):
+    records = []
+    for item in client.list_items(COLLECTIONS["blog_posts"]):
+        fd = item.get("fieldData", {})
+        src = "/site/blog/" + str(fd.get("slug",""))
+        for field, html in get_blog_body(item).items():
+            for link in extract_links(html):
+                records.append({"source_url":src, "source_body_field":field,
+                    "target_url":link["href"], "anchor_text":link["anchor"],
+                    "position_in_field":link["position"]})
+    return records
+
+def classify(row, tier_map):
+    src = row["source_url"].rstrip("/")
+    tgt = row["target_url"].rstrip("/")
+    anchor = str(row["anchor_text"]).strip().lower()
+    src_meta = tier_map.get(src, {})
+    tgt_meta = tier_map.get(tgt, {})
+    src_tier = src_meta.get("tier","?")
+    tgt_tier = tgt_meta.get("tier","?")
+    order = ["T4","T3","T2","T1","T1P","T0"]
+    if src_tier in order and tgt_tier in order:
+        if order.index(src_tier) > order.index(tgt_tier):
+            if not (src_tier == "T4" and tgt_tier == "T4"):
+                return "KILL", "reverse-waterfall"
+    src_cat = src_meta.get("category")
+    tgt_cat = tgt_meta.get("category")
+    if src_cat and tgt_cat and src_cat != tgt_cat:
+        bridge = (src_cat == "Exams & Counselling" and tgt_cat in ("Education Loans","Finance & Credit Education")) or \
+                 (tgt_cat == "Education Loans" and src_cat in ("Study Abroad","Courses & Careers"))
+        if not bridge:
+            return "REVIEW", "cross-category"
+    if anchor in ANCHOR_GARBAGE or (anchor.startswith("http") and len(anchor) > 20):
+        return "REWRITE", "anchor-garbage"
+    return "KEEP", "compliant"
 
 def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--apply", action="store_true")
-    args = parser.parse_args()
-    print("audit_internal_links: not yet implemented")
-    print("See propelld-blog-internal-linking-strategy-v3.docx §9 for spec.")
-    sys.exit(0)
+    p = argparse.ArgumentParser()
+    p.add_argument("--tier-file", required=True)
+    p.add_argument("--from-snapshot", default=None)
+    p.add_argument("--output", default="out/internal-links-inventory.csv")
+    p.add_argument("--audit-summary", default="out/audit-summary.xlsx")
+    p.add_argument("--apply", action="store_true")
+    a = p.parse_args()
+
+    print("Loading tier map...")
+    tier_map = load_tier_map(a.tier_file)
+    print(f"  Posts: {len(tier_map)}")
+
+    if a.from_snapshot:
+        print(f"Inventorying from {a.from_snapshot}...")
+        records = inventory_from_snapshot(a.from_snapshot)
+    else:
+        print("Inventorying live from Webflow...")
+        records = inventory_from_live(WebflowClient())
+
+    df = pd.DataFrame(records)
+    print(f"  Links found: {len(df):,}")
+    if df.empty:
+        print("No links.")
+        return
+
+    df["_dup"] = df["source_url"] + "|" + df["target_url"]
+    df = df.sort_values(["source_url","position_in_field"])
+    df["_first"] = ~df.duplicated("_dup", keep="first")
+
+    print("Classifying...")
+    acts = df.apply(lambda r: classify(r, tier_map), axis=1)
+    df["action"] = [x[0] for x in acts]
+    df["reason"] = [x[1] for x in acts]
+    df.loc[~df["_first"], "action"] = "KILL"
+    df.loc[~df["_first"], "reason"] = "duplicate-target"
+    df = df.drop(columns=["_dup","_first"])
+
+    print("\nActions:")
+    print(df["action"].value_counts())
+
+    if not a.apply:
+        print("\nDRY-RUN. Pass --apply.")
+        return
+
+    Path(a.output).parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(a.output, index=False)
+    print(f"✓ Wrote {a.output}")
+
+    summary = pd.DataFrame([{"Action":ac, "Count":len(df[df.action==ac]),
+        "% of total": round(100*len(df[df.action==ac])/len(df),1)}
+        for ac in ["KEEP","KILL","REWRITE","REVIEW"]])
+    with pd.ExcelWriter(a.audit_summary, engine="openpyxl") as w:
+        summary.to_excel(w, sheet_name="summary", index=False)
+        df.to_excel(w, sheet_name="all_links", index=False)
+        for ac in ["KILL","REWRITE","REVIEW"]:
+            df[df.action==ac].to_excel(w, sheet_name=f"{ac.lower()}_list", index=False)
+    print(f"✓ Wrote {a.audit_summary}")
 
 if __name__ == "__main__":
     main()

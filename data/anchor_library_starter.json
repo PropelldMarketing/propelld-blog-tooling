@@ -1,0 +1,112 @@
+{
+  "_description": "Anchor text variants per destination URL. Vaishali maintains this. Load into anchor_library.py.",
+  "_rules": {
+    "max_uses_per_anchor_across_catalogue": 50,
+    "no_click_here": true,
+    "no_read_more": true,
+    "first_link_only_rule": true
+  },
+  "destinations": {
+    "/site/education-loan": [
+      "education loan in India",
+      "best education loans",
+      "compare education loans",
+      "finance your studies with an education loan",
+      "Propelld education loan options",
+      "see education loan options",
+      "education loan guide"
+    ],
+    "/site/college-loan": [
+      "college loan in India",
+      "apply for a college loan",
+      "fund your college fees",
+      "Propelld college loan",
+      "college fee financing"
+    ],
+    "/site/mba-education-loan": [
+      "MBA education loan",
+      "loan for an MBA",
+      "how to finance your MBA",
+      "MBA loan options on Propelld",
+      "fund your MBA seat",
+      "pay for an MBA without collateral"
+    ],
+    "/site/upskilling-loan": [
+      "upskilling loan",
+      "loan for online courses",
+      "skill development loan",
+      "finance your upskilling course"
+    ],
+    "/site/education-loan-emi-calculator": [
+      "calculate your education loan EMI",
+      "education loan EMI calculator",
+      "estimate your monthly EMI"
+    ],
+    "/site/neet-college-predictor": [
+      "NEET college predictor",
+      "predict your NEET college",
+      "check colleges based on NEET score"
+    ],
+    "/site/blog/best-education-loans-in-india": [
+      "best education loans in India",
+      "top education loans available today",
+      "compare the best education loans",
+      "which education loan is right for you"
+    ],
+    "/site/blog/education-loan-eligibility-and-application-process": [
+      "education loan eligibility and application process",
+      "how to apply for an education loan",
+      "the education loan application journey",
+      "eligibility checklist for an education loan"
+    ],
+    "/site/blog/education-loan-without-collateral": [
+      "no-collateral education loan",
+      "education loan without collateral",
+      "collateral-free student loans"
+    ],
+    "/site/blog/education-loan-for-abroad": [
+      "education loan for studying abroad",
+      "abroad education loan guide",
+      "financing overseas studies"
+    ],
+    "/site/blog/education-loan-interest-rate": [
+      "education loan interest rates in India",
+      "current education loan interest rates",
+      "compare education loan interest"
+    ],
+    "/site/blog/education-loan-eligibility": [
+      "education loan eligibility criteria",
+      "who qualifies for an education loan",
+      "eligibility requirements for education loans"
+    ],
+    "/site/blog/education-loan-emi-calculator": [
+      "calculate your education loan EMI",
+      "education loan EMI calculator guide",
+      "estimate monthly EMI"
+    ],
+    "/site/blog/how-education-loan-works": [
+      "how education loans work in India",
+      "understanding education loans",
+      "the education loan process explained"
+    ],
+    "/site/blog/aakash-institute-fee-structure": [
+      "Aakash Institute fee structure",
+      "Aakash NEET coaching fees",
+      "Aakash Institute course fees",
+      "the cost of Aakash coaching",
+      "current Aakash Institute fees"
+    ],
+    "/site/blog/allen-kota-fees": [
+      "Allen Kota fees",
+      "Allen Kota coaching costs",
+      "Allen Career Institute fee structure",
+      "Allen Kota JEE + NEET coaching fees",
+      "current Allen Kota fees"
+    ],
+    "/site/blog/best-student-loan-apps": [
+      "top student loan apps",
+      "best apps for student loans",
+      "digital education loan platforms"
+    ]
+  }
+}
