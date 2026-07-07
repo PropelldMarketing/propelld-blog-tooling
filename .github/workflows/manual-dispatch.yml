@@ -9,6 +9,8 @@ on:
         type: choice
         options:
           - snapshot
+          - refresh_hub_data
+          - refresh_links
           - publish_facet_items
           - check_facet_content
           - audit_internal_links
