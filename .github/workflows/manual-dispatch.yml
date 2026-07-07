@@ -8,6 +8,7 @@ on:
         required: true
         type: choice
         options:
+          - snapshot
           - publish_facet_items
           - check_facet_content
           - audit_internal_links
@@ -15,6 +16,7 @@ on:
           - link_recommender
           - bulk_apply_links
           - link_health_report
+          - rollback
       apply:
         description: 'Run with --apply (actually write changes). Defaults to dry-run.'
         required: false
@@ -49,7 +51,7 @@ jobs:
           if [ -n "${{ inputs.extra_args }}" ]; then ARGS="$ARGS ${{ inputs.extra_args }}"; fi
           python scripts/${{ inputs.script }}.py $ARGS
 
-      - name: Upload any output artifacts
+      - name: Upload output artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
