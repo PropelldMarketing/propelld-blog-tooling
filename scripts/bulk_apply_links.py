@@ -55,7 +55,12 @@ def apply_to_item(client, item, recs, dry_run):
         if rec["target_url"] in current:
             skipped += 1
             continue
-        bodies[field] = insert_link_in_body(current, rec["anchor_text"],
+        # Prefer refined_anchor (Option B — context-aware pass) if present + non-empty,
+        # else fall back to library anchor_text.
+        anchor = rec.get("refined_anchor") if "refined_anchor" in rec else None
+        if not anchor or (isinstance(anchor, float) and pd.isna(anchor)):
+            anchor = rec["anchor_text"]
+        bodies[field] = insert_link_in_body(current, anchor,
             rec["target_url"], rec["suggested_position"])
         inserted += 1
     after = {k: link_count(v) for k, v in bodies.items()}
@@ -129,12 +134,4 @@ def main():
         time.sleep(0.2)
 
     Path("out").mkdir(exist_ok=True)
-    log_df = pd.DataFrame(logs)
-    log_df.to_csv("out/bulk-apply-log.csv", index=False)
-    print(f"\n✓ Wrote out/bulk-apply-log.csv")
-    if "inserted" in log_df.columns:
-        print(f"  Links inserted: {log_df['inserted'].fillna(0).sum():,.0f}")
-    print(f"  Errors: {errors}")
-
-if __name__ == "__main__":
-    main()
+    

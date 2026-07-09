@@ -8,16 +8,17 @@ on:
         required: true
         type: choice
         options:
-          - snapshot
-          - refresh_hub_data
-          - refresh_links
           - publish_facet_items
           - check_facet_content
           - audit_internal_links
           - priority_scorer
           - link_recommender
+          - anchor_refiner
           - bulk_apply_links
           - link_health_report
+          - refresh_hub_data
+          - refresh_links
+          - snapshot_blog_html
           - rollback
       apply:
         description: 'Run with --apply (actually write changes). Defaults to dry-run.'
@@ -47,17 +48,13 @@ jobs:
         env:
           WEBFLOW_API_TOKEN: ${{ secrets.WEBFLOW_API_TOKEN }}
           AHREFS_API_TOKEN: ${{ secrets.AHREFS_API_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           ARGS=""
           if [ "${{ inputs.apply }}" = "true" ]; then ARGS="--apply"; fi
           if [ -n "${{ inputs.extra_args }}" ]; then ARGS="$ARGS ${{ inputs.extra_args }}"; fi
           python scripts/${{ inputs.script }}.py $ARGS
 
-      - name: Upload output artifacts
+      - name: Upload any output artifacts
         if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.script }}-${{ github.run_id }}
-          path: out/
-          if-no-files-found: ignore
-          retention-days: 30
+   

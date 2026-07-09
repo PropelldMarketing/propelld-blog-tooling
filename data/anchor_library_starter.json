@@ -1,100 +1,331 @@
 {
-  "_description": "Anchor text variants per destination URL. Vaishali maintains this. Load into anchor_library.py.",
+  "_description": "Anchor text variants per destination URL. Expanded 9 Jul 2026 — now covers all 45 T1P pillars, top 55 T1 posts, and 6 T0 money pages with 4-6 natural variants each. These are STARTING POINTS; Vaishali edits during Phase 4 review, and anchor_refiner.py refines them for context before Phase 5 bulk-apply.",
   "_rules": {
     "max_uses_per_anchor_across_catalogue": 50,
     "no_click_here": true,
     "no_read_more": true,
-    "first_link_only_rule": true
+    "first_link_only_rule": true,
+    "prefer_natural_phrase_over_exact_match": true
   },
   "destinations": {
     "/site/education-loan": [
       "education loan in India",
-      "best education loans",
       "compare education loans",
-      "finance your studies with an education loan",
-      "Propelld education loan options",
-      "see education loan options",
-      "education loan guide"
+      "find the right education loan",
+      "education loan options at Propelld",
+      "explore education loan choices",
+      "our education loan guide"
     ],
     "/site/college-loan": [
       "college loan in India",
       "apply for a college loan",
       "fund your college fees",
-      "Propelld college loan",
-      "college fee financing"
+      "college fee financing",
+      "college loan options",
+      "loans for college"
     ],
     "/site/mba-education-loan": [
       "MBA education loan",
       "loan for an MBA",
       "how to finance your MBA",
-      "MBA loan options on Propelld",
+      "MBA loan options",
       "fund your MBA seat",
-      "pay for an MBA without collateral"
+      "MBA financing"
     ],
     "/site/upskilling-loan": [
       "upskilling loan",
       "loan for online courses",
       "skill development loan",
-      "finance your upskilling course"
+      "finance your upskilling course",
+      "loan for professional courses"
     ],
     "/site/education-loan-emi-calculator": [
       "calculate your education loan EMI",
       "education loan EMI calculator",
-      "estimate your monthly EMI"
+      "estimate your monthly EMI",
+      "check EMI amount",
+      "EMI planning tool"
     ],
     "/site/neet-college-predictor": [
       "NEET college predictor",
       "predict your NEET college",
-      "check colleges based on NEET score"
+      "check colleges based on NEET score",
+      "NEET rank to college tool",
+      "find colleges for your NEET score"
+    ],
+    "/site/blog/education-loan-eligibility-and-application-process": [
+      "education loan eligibility and how to apply",
+      "check your loan eligibility",
+      "the education loan application process",
+      "how to qualify for an education loan",
+      "eligibility checklist for education loans",
+      "step-by-step loan application"
+    ],
+    "/site/blog/best-student-loan-apps": [
+      "top student loan apps",
+      "best apps for student loans",
+      "digital education loan platforms",
+      "loan apps for students",
+      "quickest student loan apps"
+    ],
+    "/site/blog/vidya-lakshmi-education-loan": [
+      "PM Vidyalaxmi scheme",
+      "the Vidya Lakshmi portal explained",
+      "government-backed Vidyalaxmi loans",
+      "apply through Vidya Lakshmi",
+      "central Vidyalaxmi scheme guide"
+    ],
+    "/site/blog/education-loan-for-mbbs": [
+      "education loan for MBBS",
+      "MBBS loan eligibility and rates",
+      "how to finance MBBS studies",
+      "MBBS student loan options",
+      "loan for MBBS course"
+    ],
+    "/site/blog/education-loan-without-co-applicant": [
+      "education loan without a co-applicant",
+      "how to get a loan without a co-signer",
+      "no co-applicant loan options",
+      "loans that skip co-applicant requirements",
+      "student loans without a guarantor"
+    ],
+    "/site/blog/education-loan-without-collateral": [
+      "no-collateral education loan",
+      "education loan without collateral",
+      "collateral-free student loans",
+      "unsecured education loans",
+      "loans that don't require security"
+    ],
+    "/site/blog/nbfc-education-loan": [
+      "NBFC education loans",
+      "top NBFC lenders for students",
+      "loans from non-banking lenders",
+      "NBFC vs bank education loans",
+      "financing through NBFCs"
+    ],
+    "/site/blog/education-loan-scheme-by-narendra-modi": [
+      "PM Vidyalaxmi and other central schemes",
+      "government education loan schemes",
+      "central schemes for student loans",
+      "PM-backed loan initiatives",
+      "national education loan schemes"
+    ],
+    "/site/blog/student-loan-on-aadhaar-card": [
+      "loans on Aadhaar",
+      "Aadhaar-based student loans",
+      "get a student loan with Aadhaar",
+      "Aadhaar as loan proof",
+      "loans against Aadhaar card"
+    ],
+    "/site/blog/lowest-interest-rate-on-education-loan": [
+      "the lowest education loan interest rates",
+      "cheapest education loans available",
+      "best interest rates for student loans",
+      "compare low-interest education loans",
+      "which lender has the lowest rate"
+    ],
+    "/site/blog/how-to-get-an-education-loan-with-low-cibil-score": [
+      "education loans with a low CIBIL score",
+      "loans despite poor credit",
+      "how to borrow with a bad CIBIL",
+      "student loans for low credit scores",
+      "improving CIBIL for education loans"
+    ],
+    "/site/blog/education-loan-for-engineering": [
+      "education loan for engineering",
+      "BTech financing options",
+      "engineering course loans",
+      "loans for engineering students",
+      "how to fund your engineering degree"
+    ],
+    "/site/blog/laptop-quotation-for-education-loan": [
+      "laptop quotation for an education loan",
+      "including a laptop in your loan",
+      "how to submit a laptop quote",
+      "getting your laptop financed via loan",
+      "laptop quotation format"
     ],
     "/site/blog/best-education-loans-in-india": [
       "best education loans in India",
       "top education loans available today",
       "compare the best education loans",
-      "which education loan is right for you"
+      "which education loan is right for you",
+      "India's top student loans"
     ],
-    "/site/blog/education-loan-eligibility-and-application-process": [
-      "education loan eligibility and application process",
-      "how to apply for an education loan",
-      "the education loan application journey",
-      "eligibility checklist for an education loan"
+    "/site/blog/education-loan-moratorium-period": [
+      "the moratorium period explained",
+      "loan moratorium in India",
+      "how the moratorium works",
+      "grace period for education loans",
+      "moratorium benefits for students"
     ],
-    "/site/blog/education-loan-without-collateral": [
-      "no-collateral education loan",
-      "education loan without collateral",
-      "collateral-free student loans"
+    "/site/blog/sbi-education-loan-for-abroad": [
+      "SBI's Global Ed-Vantage scheme",
+      "SBI education loan for abroad studies",
+      "abroad loans from SBI",
+      "SBI's international student loan",
+      "study abroad financing via SBI"
     ],
-    "/site/blog/education-loan-for-abroad": [
-      "education loan for studying abroad",
-      "abroad education loan guide",
-      "financing overseas studies"
-    ],
-    "/site/blog/education-loan-interest-rate": [
-      "education loan interest rates in India",
-      "current education loan interest rates",
-      "compare education loan interest"
-    ],
-    "/site/blog/education-loan-eligibility": [
-      "education loan eligibility criteria",
-      "who qualifies for an education loan",
-      "eligibility requirements for education loans"
-    ],
-    "/site/blog/education-loan-emi-calculator": [
-      "calculate your education loan EMI",
-      "education loan EMI calculator guide",
-      "estimate monthly EMI"
+    "/site/blog/education-loan-repayment-rules": [
+      "education loan repayment rules",
+      "repaying your student loan",
+      "loan repayment guidelines",
+      "how repayments work",
+      "repayment terms explained"
     ],
     "/site/blog/how-education-loan-works": [
-      "how education loans work in India",
+      "how education loans work",
+      "the education loan process",
       "understanding education loans",
-      "the education loan process explained"
+      "how student loans function in India",
+      "education loan basics"
     ],
     "/site/blog/aakash-institute-fee-structure": [
       "Aakash Institute fee structure",
       "Aakash NEET coaching fees",
       "Aakash Institute course fees",
-      "the cost of Aakash coaching",
+      "cost of Aakash coaching",
       "current Aakash Institute fees"
+    ],
+    "/site/blog/bsc-nursing-fees": [
+      "BSc Nursing course fees",
+      "government vs private BSc Nursing fees",
+      "BSc Nursing cost breakdown",
+      "how much does BSc Nursing cost",
+      "BSc Nursing fee structure"
+    ],
+    "/site/blog/pharm-d-course": [
+      "the Pharm D course",
+      "Pharm D fees and eligibility",
+      "everything about Pharm D",
+      "Pharm D career guide",
+      "Pharm D admission details"
+    ],
+    "/site/blog/vidya-lakshmi-portal-college-list": [
+      "colleges on the Vidya Lakshmi portal",
+      "Vidya Lakshmi portal college list",
+      "which colleges accept Vidya Lakshmi loans",
+      "list of Vidyalaxmi-eligible colleges",
+      "Vidya Lakshmi approved colleges"
+    ],
+    "/site/blog/bca-course-fees": [
+      "BCA course fees",
+      "BCA admission cost",
+      "BCA fee structure",
+      "how much does a BCA cost",
+      "top BCA college fees"
+    ],
+    "/site/blog/cat-exam-date-2025": [
+      "the CAT exam schedule",
+      "CAT registration and dates",
+      "CAT 2025 details",
+      "CAT eligibility and syllabus",
+      "everything about the CAT exam"
+    ],
+    "/site/blog/tnea-cutoff": [
+      "TNEA cutoff details",
+      "TNEA college and branch cutoffs",
+      "category-wise TNEA cutoffs",
+      "check TNEA cutoff",
+      "TNEA cutoff guide"
+    ],
+    "/site/blog/education-loan-for-abroad-studies": [
+      "education loan for studying abroad",
+      "abroad education loan guide",
+      "financing overseas studies",
+      "student loans for foreign universities",
+      "how to fund your studies abroad"
+    ],
+    "/site/blog/mbbs-fees": [
+      "MBBS fees in India",
+      "MBBS cost breakdown",
+      "government vs private MBBS fees",
+      "MBBS fee structure",
+      "cost of an MBBS degree"
+    ],
+    "/site/blog/cuet-rank-predictor-tool": [
+      "CUET rank predictor tool",
+      "predict CUET results",
+      "CUET rank estimation tool",
+      "estimate your CUET rank",
+      "CUET predictor guide"
+    ],
+    "/site/blog/ap-eamcet-college-predictor": [
+      "AP EAMCET college predictor",
+      "colleges via AP EAMCET rank",
+      "predict AP EAMCET colleges",
+      "AP EAMCET rank to college tool",
+      "find AP EAMCET-eligible colleges"
+    ],
+    "/site/blog/minimum-marks-required-in-neet": [
+      "minimum NEET marks for MBBS",
+      "category-wise NEET cutoff",
+      "NEET qualifying marks",
+      "NEET score requirements",
+      "how many marks do you need in NEET"
+    ],
+    "/site/blog/bds-cutoff-for-neet": [
+      "BDS NEET cutoff",
+      "category-wise BDS cutoffs",
+      "BDS admission cutoff",
+      "NEET score needed for BDS",
+      "BDS cutoff details"
+    ],
+    "/site/blog/ts-eamcet-college-predictor": [
+      "TS EAMCET college predictor",
+      "colleges by TS EAMCET rank",
+      "predict TS EAMCET colleges",
+      "TS EAMCET rank tool",
+      "TS EAMCET college finder"
+    ],
+    "/site/blog/education-loan-refinance": [
+      "education loan refinancing",
+      "how to refinance your student loan",
+      "lower your loan interest via refinance",
+      "loan refinance options",
+      "refinancing your education loan"
+    ],
+    "/site/blog/btech-fees": [
+      "BTech course fees",
+      "BTech college fees",
+      "engineering degree cost",
+      "top BTech college fees",
+      "BTech fee structure"
+    ],
+    "/site/blog/ms-in-abroad": [
+      "MS abroad guide",
+      "study MS overseas",
+      "MS abroad colleges and fees",
+      "how to plan an MS abroad",
+      "MS abroad eligibility"
+    ],
+    "/site/blog/bds-course": [
+      "BDS course details",
+      "top BDS colleges and fees",
+      "BDS admissions and career",
+      "everything about BDS",
+      "BDS course guide"
+    ],
+    "/site/blog/kcet-college-predictor": [
+      "KCET college predictor",
+      "KCET rank to college tool",
+      "colleges via KCET rank",
+      "predict KCET colleges",
+      "KCET college finder"
+    ],
+    "/site/blog/mbbs-in-abroad-for-indian": [
+      "MBBS abroad for Indians",
+      "low-cost MBBS overseas",
+      "MBBS abroad options",
+      "study MBBS outside India",
+      "MBBS abroad guide"
+    ],
+    "/site/blog/cuet-college-predictor": [
+      "CUET college predictor",
+      "predict CUET colleges by score",
+      "CUET score to college tool",
+      "top CUET colleges for your score",
+      "CUET college finder"
     ],
     "/site/blog/allen-kota-fees": [
       "Allen Kota fees",
@@ -103,10 +334,509 @@
       "Allen Kota JEE + NEET coaching fees",
       "current Allen Kota fees"
     ],
-    "/site/blog/best-student-loan-apps": [
-      "top student loan apps",
-      "best apps for student loans",
-      "digital education loan platforms"
+    "/site/blog/top-colleges-fees-for-mbbs-abroad-for-indian-students": [
+      "MBBS abroad college fees",
+      "fee structure for MBBS abroad",
+      "top MBBS abroad colleges and cost",
+      "MBBS abroad cost breakdown",
+      "affordable MBBS abroad colleges"
+    ],
+    "/site/blog/affordable-mba-abroad-for-indian": [
+      "affordable MBA abroad",
+      "low-cost MBA countries",
+      "budget-friendly MBA abroad",
+      "cheap MBA options overseas",
+      "top 10 countries for affordable MBA"
+    ],
+    "/site/blog/comedk-uget-college-predictor": [
+      "COMEDK UGET college predictor",
+      "predict COMEDK colleges",
+      "COMEDK rank to college tool",
+      "colleges via COMEDK rank",
+      "COMEDK college finder"
+    ],
+    "/site/blog/gate-college-predictor": [
+      "GATE college predictor",
+      "predict IIT chances via GATE",
+      "GATE score to college tool",
+      "colleges by GATE rank",
+      "GATE college finder"
+    ],
+    "/site/blog/college-predictor-jee-mains": [
+      "JEE Main college predictor",
+      "engineering colleges by JEE rank",
+      "predict JEE Main colleges",
+      "JEE Main to college tool",
+      "top JEE Main colleges list"
+    ],
+    "/site/blog/sbi-education-loan-college-list": [
+      "SBI education loan college list",
+      "colleges approved by SBI",
+      "SBI loan-eligible colleges",
+      "SBI education loan approved list",
+      "check SBI's college list"
+    ],
+    "/site/blog/sbi-education-loan": [
+      "SBI education loan",
+      "student loans from SBI",
+      "apply for SBI's education loan",
+      "SBI's education loan scheme",
+      "financing via SBI"
+    ],
+    "/site/blog/jansamarth-education-loan": [
+      "Jansamarth education loan",
+      "the Jansamarth portal",
+      "apply through Jansamarth",
+      "Jansamarth loan scheme",
+      "government Jansamarth loans"
+    ],
+    "/site/blog/education-loan-in-tamil-nadu": [
+      "Tamil Nadu education loan",
+      "student loans in Tamil Nadu",
+      "TN education loan schemes",
+      "loans for Tamil Nadu students",
+      "Tamil Nadu loan eligibility"
+    ],
+    "/site/blog/education-loan-for-muslim-students-in-india": [
+      "education loans for Muslim students",
+      "Muslim student loan schemes",
+      "loans for Muslim minorities",
+      "minority education loans",
+      "financial aid for Muslim students"
+    ],
+    "/site/blog/education-loan-for-coaching": [
+      "loans for coaching courses",
+      "education loan for coaching",
+      "financing your coaching program",
+      "coaching class loans",
+      "loans for competitive exam prep"
+    ],
+    "/site/blog/education-loans-for-girl-students-in-india": [
+      "education loans for girl students",
+      "loans for female students",
+      "loan schemes for girls",
+      "student loans for women",
+      "girl-student loan options"
+    ],
+    "/site/blog/hdfc-bank-education-loan-college-list": [
+      "HDFC education loan college list",
+      "colleges approved by HDFC Bank",
+      "HDFC loan-eligible colleges",
+      "download HDFC's college list",
+      "HDFC's approved institutions"
+    ],
+    "/site/blog/gueedc-education-loan": [
+      "GUEEDC education loan",
+      "Gujarat GUEEDC loans",
+      "apply for a GUEEDC loan",
+      "GUEEDC loan eligibility",
+      "GUEEDC scheme guide"
+    ],
+    "/site/blog/jito-education-loan": [
+      "JITO education loan",
+      "JITO scholarship loan",
+      "how to apply for a JITO loan",
+      "JITO loan eligibility",
+      "JITO interest rates"
+    ],
+    "/site/blog/education-loan-for-vit-vellore": [
+      "education loan for VIT Vellore",
+      "VIT Vellore loan options",
+      "financing your VIT admission",
+      "VIT-approved loan schemes",
+      "loans for VIT students"
+    ],
+    "/site/blog/maulana-azad-education-loan": [
+      "Maulana Azad education loan",
+      "Maulana Azad scholarship loan",
+      "apply for Maulana Azad's loan",
+      "Maulana Azad loan eligibility",
+      "loan under Maulana Azad Foundation"
+    ],
+    "/site/blog/indian-bank-education-loan": [
+      "Indian Bank education loan",
+      "student loans from Indian Bank",
+      "Indian Bank loan interest rates",
+      "apply through Indian Bank",
+      "Indian Bank's education loan"
+    ],
+    "/site/blog/education-loan-for-mbbs-in-russia": [
+      "education loan for MBBS in Russia",
+      "MBBS Russia loan options",
+      "financing MBBS in Russia",
+      "Russia MBBS loan schemes",
+      "student loans for Russia MBBS"
+    ],
+    "/site/blog/devaraj-arasu-education-loan": [
+      "Devaraj Arasu education loan",
+      "apply for Devaraj Arasu loan",
+      "Devaraj Arasu eligibility",
+      "DACL Corporation loan",
+      "backward-classes loan scheme"
+    ],
+    "/site/blog/education-loan-for-pilot-training": [
+      "education loan for pilot training",
+      "pilot training loans",
+      "finance your CPL course",
+      "loans for aviation courses",
+      "pilot training financing"
+    ],
+    "/site/blog/union-bank-education-loan-college": [
+      "Union Bank education loan college list",
+      "colleges approved by Union Bank",
+      "Union Bank loan-eligible institutions",
+      "Union Bank approved college list",
+      "Union Bank's college list"
+    ],
+    "/site/blog/icici-bank-education-loan-college-list": [
+      "ICICI education loan college list",
+      "colleges approved by ICICI",
+      "ICICI premier institutes list",
+      "ICICI loan-eligible colleges",
+      "ICICI's approved list"
+    ],
+    "/site/blog/education-loan-in-west-bengal": [
+      "West Bengal education loan",
+      "WBSCC loan scheme",
+      "student loans in West Bengal",
+      "WB education loan eligibility",
+      "loans for Bengal students"
+    ],
+    "/site/blog/sbi-education-loan-for-mbbs": [
+      "SBI MBBS education loan",
+      "SBI's loan for MBBS students",
+      "MBBS financing via SBI",
+      "SBI MBBS loan process",
+      "MBBS loan from State Bank"
+    ],
+    "/site/blog/government-education-loan-for-sc-st-students": [
+      "government loans for SC/ST students",
+      "SC/ST education loan schemes",
+      "loans for SC/ST students",
+      "backward-class education loans",
+      "reserved category student loans"
+    ],
+    "/site/blog/arivu-education-loan": [
+      "Arivu education loan",
+      "KMDC Arivu scheme",
+      "apply for Arivu loan",
+      "Arivu eligibility and interest",
+      "Karnataka Arivu scheme"
+    ],
+    "/site/blog/axis-bank-education-loan-college-list": [
+      "Axis Bank education loan college list",
+      "colleges approved by Axis Bank",
+      "Axis Bank loan-eligible institutions",
+      "Axis Bank's approved list",
+      "check Axis Bank's college list"
+    ],
+    "/site/blog/education-loan-for-bsc-nursing": [
+      "education loan for BSc Nursing",
+      "BSc Nursing loan options",
+      "financing BSc Nursing studies",
+      "BSc Nursing loan abroad",
+      "nursing student loans"
+    ],
+    "/site/blog/indian-overseas-bank-education-loan": [
+      "Indian Overseas Bank education loan",
+      "IOB education loan",
+      "apply for an IOB loan",
+      "IOB loan interest rates",
+      "IOB student financing"
+    ],
+    "/site/blog/education-loan-for-iim": [
+      "education loan for IIM",
+      "IIM loan options",
+      "financing your IIM admission",
+      "IIM student loans",
+      "IIM education loan process"
+    ],
+    "/site/blog/education-loan-for-ca-students": [
+      "education loan for CA students",
+      "CA course financing",
+      "loans for CA aspirants",
+      "financing CA studies",
+      "CA student loan options"
+    ],
+    "/site/blog/hdfc-education-loan": [
+      "HDFC education loan",
+      "student loans from HDFC",
+      "HDFC education loan rates",
+      "apply for HDFC's loan",
+      "HDFC Bank's student loan"
+    ],
+    "/site/blog/education-loan-in-bihar": [
+      "education loan in Bihar",
+      "Bihar Student Credit Card Scheme",
+      "loans for Bihar students",
+      "Bihar SCC loan guide",
+      "Bihar's student loan scheme"
+    ],
+    "/site/blog/education-loan-for-cfa": [
+      "education loan for CFA",
+      "CFA course financing",
+      "financing options for CFA",
+      "CFA loan schemes",
+      "loans for CFA students"
+    ],
+    "/site/blog/education-loan-for-iit-students": [
+      "education loan for IIT",
+      "IIT student loan options",
+      "financing your IIT admission",
+      "IIT loan interest rates",
+      "loans for IIT courses"
+    ],
+    "/site/blog/education-loan-by-the-government": [
+      "government education loans",
+      "central government loan schemes",
+      "government-backed student loans",
+      "state and central loan schemes",
+      "government loan eligibility"
+    ],
+    "/site/blog/education-loan-for-11th-class": [
+      "education loan for Class 11",
+      "loans for 11th standard students",
+      "school-level education loans",
+      "Class 11 financing options",
+      "loans for higher secondary"
+    ],
+    "/site/blog/education-loan-for-llb": [
+      "education loan for LLB",
+      "LLB course financing",
+      "LLB student loan options",
+      "financing your LLB",
+      "loans for law students"
+    ],
+    "/site/blog/education-loan-in-andhra-pradesh": [
+      "education loan in Andhra Pradesh",
+      "AP student loan schemes",
+      "loans for AP students",
+      "Andhra Pradesh loan eligibility",
+      "AP education loan process"
+    ],
+    "/site/blog/documents-required-for-education-loan": [
+      "documents required for an education loan",
+      "education loan document checklist",
+      "paperwork for your student loan",
+      "what documents you need",
+      "loan application documents"
+    ],
+    "/site/blog/education-loan-for-md-ms-in-india": [
+      "education loan for MD/MS",
+      "MD/MS course financing",
+      "post-graduate medical loan",
+      "MD/MS loan schemes",
+      "loans for MD/MS students"
+    ],
+    "/site/blog/canara-bank-education-loan": [
+      "Canara Bank education loan",
+      "student loans from Canara Bank",
+      "apply for Canara Bank's loan",
+      "Canara Bank loan features",
+      "Canara Bank education loan process"
+    ],
+    "/site/blog/education-loan-for-gnm-nursing": [
+      "education loan for GNM students",
+      "GNM nursing loan",
+      "financing your GNM course",
+      "GNM student loan options",
+      "nursing course financing"
+    ],
+    "/site/blog/e-samaj-kalyan-education-loan": [
+      "E Samaj Kalyan education loan",
+      "apply via E Samaj Kalyan",
+      "E Samaj Kalyan eligibility",
+      "Gujarat E Samaj Kalyan scheme",
+      "E Samaj Kalyan loan guide"
+    ],
+    "/site/blog/jodo-education-loan": [
+      "Jodo education loan",
+      "how to apply for a Jodo loan",
+      "Jodo loan benefits",
+      "Jodo student loan",
+      "Jodo loan eligibility"
+    ],
+    "/site/blog/bank-of-india-education-loan": [
+      "Bank of India education loan",
+      "BOI student loans",
+      "apply for a BOI education loan",
+      "BOI loan interest rates",
+      "Bank of India's loan process"
+    ],
+    "/site/blog/csis-education-loan": [
+      "CSIS education loan",
+      "CSIS interest subsidy scheme",
+      "apply for CSIS subsidy",
+      "central CSIS scheme",
+      "CSIS eligibility guide"
+    ],
+    "/site/blog/aditya-birla-education-loan": [
+      "Aditya Birla education loan",
+      "Aditya Birla Finance student loans",
+      "apply for ABF education loan",
+      "Aditya Birla loan interest rates",
+      "financing via Aditya Birla"
+    ],
+    "/site/blog/education-loan-for-bds-in-india": [
+      "education loan for BDS",
+      "BDS course financing",
+      "BDS student loan schemes",
+      "financing your BDS admission",
+      "loans for dental students"
+    ],
+    "/site/blog/union-bank-education-loan": [
+      "Union Bank education loan",
+      "student loans from Union Bank",
+      "apply for a Union Bank loan",
+      "Union Bank's loan process",
+      "Union Bank interest rates"
+    ],
+    "/site/blog/explore-lic-education-loan": [
+      "LIC education loan policies",
+      "LIC's education loan",
+      "LIC loan features and eligibility",
+      "explore LIC's student loan",
+      "LIC education loan guide"
+    ],
+    "/site/blog/cgfsel-education-loan": [
+      "CGFSEL education loan",
+      "CGFSEL scheme details",
+      "apply for a CGFSEL loan",
+      "CGFSEL eligibility guide",
+      "government CGFSEL scheme"
+    ],
+    "/site/blog/iba-model-education-loan-scheme": [
+      "IBA Model Education Loan Scheme",
+      "the IBA model scheme",
+      "IBA loan eligibility",
+      "IBA scheme interest rates",
+      "IBA education loan guide"
+    ],
+    "/site/blog/canara-bank-education-loan-college": [
+      "Canara Bank college list",
+      "colleges approved by Canara Bank",
+      "Canara Bank loan-eligible institutions",
+      "Canara Bank's approved list",
+      "check Canara Bank's college list"
+    ],
+    "/site/blog/get-an-education-loan-in-karnataka": [
+      "education loan in Karnataka",
+      "Karnataka student loan schemes",
+      "loans for Karnataka students",
+      "Karnataka loan eligibility",
+      "student loans in Karnataka"
+    ],
+    "/site/blog/education-loan-for-bba-students": [
+      "education loan for BBA",
+      "BBA course financing",
+      "loans for BBA students",
+      "financing your BBA admission",
+      "BBA student loan options"
+    ],
+    "/site/blog/icici-education-loan": [
+      "ICICI education loan",
+      "student loans from ICICI",
+      "apply for an ICICI loan",
+      "ICICI loan interest rates",
+      "ICICI's education loan process"
+    ],
+    "/site/blog/education-loan-insurance": [
+      "education loan insurance",
+      "insuring your student loan",
+      "loan insurance premium and process",
+      "education loan insurance explained",
+      "why loan insurance matters"
+    ],
+    "/site/blog/education-loan-in-madhya-pradesh": [
+      "education loan in Madhya Pradesh",
+      "MP student loan schemes",
+      "loans for MP students",
+      "Madhya Pradesh loan eligibility",
+      "MP education loan process"
+    ],
+    "/site/blog/hdfc-credila-education-loan": [
+      "HDFC Credila education loan",
+      "Credila's student loan",
+      "apply for HDFC Credila",
+      "Credila interest rates",
+      "HDFC Credila loan process"
+    ],
+    "/site/blog/pnb-education-loan": [
+      "PNB education loan",
+      "student loans from PNB",
+      "PNB loan features and interest",
+      "apply for a PNB education loan",
+      "PNB's student loan benefits"
+    ],
+    "/site/blog/top-bams-colleges-in-pune": [
+      "top BAMS colleges in Pune",
+      "Pune's leading BAMS colleges",
+      "best BAMS colleges in Pune",
+      "BAMS admission in Pune",
+      "Pune BAMS college list"
+    ],
+    "/site/blog/top-bsc-nursing-colleges-in-bangalore": [
+      "top BSc Nursing colleges in Bangalore",
+      "Bangalore's leading Nursing colleges",
+      "best BSc Nursing colleges in Bangalore",
+      "BSc Nursing admissions in Bangalore",
+      "Bangalore BSc Nursing college list"
+    ],
+    "/site/blog/cost-of-living-in-dubai": [
+      "cost of living in Dubai",
+      "Dubai living expenses breakdown",
+      "how much it costs to live in Dubai",
+      "Dubai budget for students",
+      "Dubai monthly expenses"
+    ],
+    "/site/blog/mba-in-pharmaceutical-management": [
+      "MBA in pharmaceutical management",
+      "pharma MBA course guide",
+      "MBA options for pharma students",
+      "pharmaceutical management MBA",
+      "MBA in pharma industry"
+    ],
+    "/site/blog/viteee-exam-cutoff": [
+      "VITEEE exam cutoff",
+      "VITEEE cutoff scores",
+      "cutoff for VIT admission",
+      "VITEEE cutoff by branch",
+      "check VITEEE cutoff"
+    ],
+    "/site/blog/eamcet-marks-vs-rank": [
+      "EAMCET marks vs rank",
+      "EAMCET rank prediction",
+      "convert EAMCET marks to rank",
+      "EAMCET marks and rank breakdown",
+      "understand your EAMCET rank"
+    ],
+    "/site/blog/education-loan-interest-rate": [
+      "education loan interest rates in India",
+      "current education loan interest",
+      "compare loan interest rates",
+      "how education loan interest works",
+      "interest rate breakdown"
+    ],
+    "/site/blog/education-loan-eligibility": [
+      "education loan eligibility",
+      "who qualifies for an education loan",
+      "loan eligibility criteria",
+      "eligibility requirements for student loans",
+      "check your loan eligibility"
+    ],
+    "/site/blog/education-loan-emi-calculator": [
+      "education loan EMI calculator",
+      "calculate your monthly EMI",
+      "EMI calculator for student loans",
+      "estimate your loan EMI",
+      "check EMI amount"
+    ],
+    "/site/blog/education-loan-for-abroad": [
+      "education loan for studying abroad",
+      "abroad education loan guide",
+      "financing overseas education",
+      "loans for abroad studies",
+      "abroad student loan options"
     ]
   }
 }
