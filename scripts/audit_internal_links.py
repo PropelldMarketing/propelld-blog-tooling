@@ -62,32 +62,64 @@ def inventory_from_live(client):
     return records
 
 def classify(row, tier_map):
+    """
+    Classification rules (relaxed 10 Jul 2026):
+      KILL     - extreme reverse waterfall (T1P/T1 linking DOWN to T4 across
+                 categories), duplicate targets, links to unknown/dead posts
+      REWRITE  - anchor is 'click here' / 'read more' / raw URL / empty
+      REVIEW   - moderate reverse waterfall (down 2+ tiers cross-category),
+                 or cross-category with no known bridge exception
+      KEEP     - everything else
+    Same-category downward links are KEPT (pillar hubs are supposed to link
+    to their supporting posts within their own category).
+    """
     src = row["source_url"].rstrip("/")
     tgt = row["target_url"].rstrip("/")
     anchor = str(row["anchor_text"]).strip().lower()
     src_meta = tier_map.get(src, {})
     tgt_meta = tier_map.get(tgt, {})
-    src_tier = src_meta.get("tier","?")
-    tgt_tier = tgt_meta.get("tier","?")
-    order = ["T4","T3","T2","T1","T1P","T0"]
-    if src_tier in order and tgt_tier in order:
-        if order.index(src_tier) > order.index(tgt_tier):
-            if not (src_tier == "T4" and tgt_tier == "T4"):
-                return "KILL", "reverse-waterfall"
+    src_tier = src_meta.get("tier", "?")
+    tgt_tier = tgt_meta.get("tier", "?")
     src_cat = src_meta.get("category")
     tgt_cat = tgt_meta.get("category")
-    if src_cat and tgt_cat and src_cat != tgt_cat:
-        bridge = (src_cat == "Exams & Counselling" and tgt_cat in ("Education Loans","Finance & Credit Education")) or \
-                 (tgt_cat == "Education Loans" and src_cat in ("Study Abroad","Courses & Careers"))
+
+    # 1. Anchor garbage (highest priority)
+    if not anchor:
+        return "REWRITE", "empty-anchor"
+    if anchor in ANCHOR_GARBAGE:
+        return "REWRITE", "anchor-garbage"
+    if anchor.startswith("http") and len(anchor) > 20:
+        return "REWRITE", "url-as-anchor"
+
+    # 2. Target unknown = probably dead post
+    if tgt.startswith("/site/blog/") and tgt_tier == "?":
+        return "KILL", "unknown-target-post"
+
+    # 3. Tier waterfall (relaxed):
+    order = ["T4", "T3", "T2", "T1", "T1P", "T0"]
+    if src_tier in order and tgt_tier in order:
+        drop = order.index(src_tier) - order.index(tgt_tier)  # >0 means going DOWN
+        if drop > 0:
+            if src_cat and tgt_cat and src_cat == tgt_cat:
+                pass  # same-cat downward = OK (hub outlinks)
+            elif drop >= 3:
+                return "KILL", "reverse-waterfall-3plus"
+            elif drop == 2:
+                return "REVIEW", "reverse-waterfall-2"
+            # drop==1 cross-cat = keep (mild)
+
+    # 4. Cross-category with no bridge (T0 money pages always exempt)
+    if src_cat and tgt_cat and src_cat != tgt_cat and tgt_tier != "T0":
+        bridge = (src_cat == "Exams & Counselling" and tgt_cat in ("Education Loans", "Finance & Credit Education")) or \
+                 (tgt_cat == "Education Loans" and src_cat in ("Study Abroad", "Courses & Careers"))
         if not bridge:
             return "REVIEW", "cross-category"
-    if anchor in ANCHOR_GARBAGE or (anchor.startswith("http") and len(anchor) > 20):
-        return "REWRITE", "anchor-garbage"
+
     return "KEEP", "compliant"
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--tier-file", required=True)
+    p.add_argument("--tier-file", default="data/posts-with-tiers.xlsx")
     p.add_argument("--from-snapshot", default=None)
     p.add_argument("--output", default="out/internal-links-inventory.csv")
     p.add_argument("--audit-summary", default="out/audit-summary.xlsx")

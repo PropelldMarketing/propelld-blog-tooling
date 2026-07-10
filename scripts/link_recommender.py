@@ -100,8 +100,8 @@ def recommend_for_post(source, df, grammar, anchor_lib, used_anchors, t0_pages):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--tier-file", required=True)
-    p.add_argument("--anchor-library", required=True)
+    p.add_argument("--tier-file", default="data/posts-with-tiers.xlsx")
+    p.add_argument("--anchor-library", default="data/anchor_library_starter.json")
     p.add_argument("--output", default="out/link-recommendations.csv")
     p.add_argument("--apply", action="store_true")
     p.add_argument("--seed", type=int, default=42)

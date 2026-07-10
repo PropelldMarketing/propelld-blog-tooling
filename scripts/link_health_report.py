@@ -40,7 +40,7 @@ def gini(values):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--tier-file", required=True)
+    p.add_argument("--tier-file", default="data/posts-with-tiers.xlsx")
     p.add_argument("--output", default="out/link-health-report.xlsx")
     a = p.parse_args()
 

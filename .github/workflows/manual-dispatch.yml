@@ -18,7 +18,7 @@ on:
           - link_health_report
           - refresh_hub_data
           - refresh_links
-          - snapshot_blog_html
+          - snapshot
           - rollback
       apply:
         description: 'Run with --apply (actually write changes). Defaults to dry-run.'
@@ -53,6 +53,7 @@ jobs:
           ARGS=""
           if [ "${{ inputs.apply }}" = "true" ]; then ARGS="--apply"; fi
           if [ -n "${{ inputs.extra_args }}" ]; then ARGS="$ARGS ${{ inputs.extra_args }}"; fi
+          echo "FINAL ARGS: $ARGS"
           python scripts/${{ inputs.script }}.py $ARGS
 
       - name: Upload any output artifacts

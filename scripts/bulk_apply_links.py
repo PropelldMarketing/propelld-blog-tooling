@@ -83,8 +83,8 @@ def apply_to_item(client, item, recs, dry_run):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--recommendations", required=True)
-    p.add_argument("--snapshot-dir", required=True)
+    p.add_argument("--recommendations", default="data/link-recommendations.csv")
+    p.add_argument("--snapshot-dir", default="snapshots/")
     p.add_argument("--tier-filter", default=None)
     p.add_argument("--apply", action="store_true")
     p.add_argument("--skip-snapshot", action="store_true")

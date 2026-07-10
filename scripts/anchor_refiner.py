@@ -153,7 +153,7 @@ def call_haiku(client, prompt):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--input", required=True, help="link-recommendations.csv from link_recommender.py")
+    p.add_argument("--input", default="data/link-recommendations.csv", help="link-recommendations.csv from link_recommender.py")
     p.add_argument("--output", default="out/link-recommendations-refined.csv")
     p.add_argument("--anchor-library",
                    default=str(Path(__file__).parent.parent / "data" / "anchor_library_starter.json"))
