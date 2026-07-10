@@ -42,6 +42,8 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--tier-file", default="data/posts-with-tiers.xlsx")
     p.add_argument("--output", default="out/link-health-report.xlsx")
+    p.add_argument("--apply", action="store_true",
+                   help="Accepted for workflow-uniformity; script is always read-only.")
     a = p.parse_args()
 
     print("Loading tier map...")

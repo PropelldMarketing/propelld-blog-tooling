@@ -162,6 +162,9 @@ def main():
                    help="Seconds between requests (default 0.25)")
     p.add_argument("--limit", type=int, default=0,
                    help="Limit to first N URLs (0 = no limit)")
+    p.add_argument("--apply", action="store_true",
+                   help="Accepted for workflow-uniformity; script is always read-only, "
+                        "so --apply has no effect here.")
     args = p.parse_args()
 
     urls = load_urls(args)

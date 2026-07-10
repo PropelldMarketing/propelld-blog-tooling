@@ -54,6 +54,8 @@ def list_items(token, collection_id):
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--output", default="out/facet-content-audit.xlsx")
+    parser.add_argument("--apply", action="store_true",
+                        help="Accepted for workflow-uniformity; read-only script.")
     args = parser.parse_args()
 
     token = os.environ.get("WEBFLOW_API_TOKEN")
