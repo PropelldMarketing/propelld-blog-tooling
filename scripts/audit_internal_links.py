@@ -63,15 +63,20 @@ def inventory_from_live(client):
 
 def classify(row, tier_map):
     """
-    Classification rules (relaxed 10 Jul 2026):
+    Classification rules (updated 10 Jul 2026):
       KILL     - extreme reverse waterfall (T1P/T1 linking DOWN to T4 across
-                 categories), duplicate targets, links to unknown/dead posts
+                 categories); duplicate target within same source body
       REWRITE  - anchor is 'click here' / 'read more' / raw URL / empty
-      REVIEW   - moderate reverse waterfall (down 2+ tiers cross-category),
-                 or cross-category with no known bridge exception
+      REVIEW   - target not in tier map (needs check_url_health.py to resolve);
+                 moderate reverse waterfall (down 2+ tiers cross-category);
+                 cross-category with no known bridge exception
       KEEP     - everything else
-    Same-category downward links are KEPT (pillar hubs are supposed to link
-    to their supporting posts within their own category).
+    Notes:
+      - Same-category downward links are KEPT (pillar hubs are supposed to link
+        to their supporting posts within their own category).
+      - We NEVER kill based on "not in tier map" alone — that only means the
+        Screaming Frog crawl didn\'t capture it, not that the URL is dead.
+        Route to REVIEW instead, then verify with check_url_health.py.
     """
     src = row["source_url"].rstrip("/")
     tgt = row["target_url"].rstrip("/")
@@ -91,9 +96,13 @@ def classify(row, tier_map):
     if anchor.startswith("http") and len(anchor) > 20:
         return "REWRITE", "url-as-anchor"
 
-    # 2. Target unknown = probably dead post
+    # 2. Target not in tier map — DO NOT assume dead. The tier map only contains
+    #    posts captured by the Screaming Frog crawl. Absence can mean: new post,
+    #    canonicalized post, existing redirect, or true 404. Only a live HTTP check
+    #    can distinguish those. Flag for REVIEW so check_url_health.py + a human
+    #    can resolve. Never KILL from this signal alone.
     if tgt.startswith("/site/blog/") and tgt_tier == "?":
-        return "KILL", "unknown-target-post"
+        return "REVIEW", "target-not-in-tier-map"
 
     # 3. Tier waterfall (relaxed):
     order = ["T4", "T3", "T2", "T1", "T1P", "T0"]

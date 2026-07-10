@@ -16,6 +16,7 @@ on:
           - anchor_refiner
           - bulk_apply_links
           - link_health_report
+          - check_url_health
           - refresh_hub_data
           - refresh_links
           - snapshot
