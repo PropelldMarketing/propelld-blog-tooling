@@ -147,7 +147,7 @@ def load_urls(args):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--from-audit", default="out/internal-links-inventory.csv",
+    p.add_argument("--from-audit", default="data/internal-links-inventory.csv",
                    help="Path to internal-links-inventory.csv from audit_internal_links.py")
     p.add_argument("--filter-reason", default="target-not-in-tier-map",
                    help="Filter audit rows by 'reason' column")
