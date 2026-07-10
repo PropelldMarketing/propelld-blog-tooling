@@ -64,15 +64,29 @@ def assign_tier(score, is_pillar):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--screaming-frog", required=True)
-    p.add_argument("--gsc-export", required=True)
-    p.add_argument("--leads-csv", required=True)
+    p.add_argument("--screaming-frog", default=None, help="Screaming Frog crawl xlsx (proprietary, not in repo)")
+    p.add_argument("--gsc-export", default=None, help="GSC 16-month export xlsx (proprietary, not in repo)")
+    p.add_argument("--leads-csv", default=None, help="CRM leads xlsx (proprietary, not in repo)")
     p.add_argument("--disbursement-csv", default=None)
     p.add_argument("--tier-overrides", default=None)
     p.add_argument("--pillar-shortlists", default=None)
     p.add_argument("--output", default="out/posts-with-tiers.xlsx")
     p.add_argument("--apply", action="store_true")
     a = p.parse_args()
+
+    # Post-parse check: 3 required files can't be committed to repo (proprietary).
+    # If any is missing, print a helpful error instead of a cryptic argparse crash.
+    missing = [name for name, val in [("--screaming-frog", a.screaming_frog),
+                                       ("--gsc-export", a.gsc_export),
+                                       ("--leads-csv", a.leads_csv)] if not val]
+    if missing:
+        import sys
+        print(f"ERROR: priority_scorer needs 3 input files (not in the repo — proprietary data).", file=sys.stderr)
+        print(f"       Missing: {', '.join(missing)}", file=sys.stderr)
+        print(f"       Upload those files into the repo's data/ folder and commit them, then re-run.", file=sys.stderr)
+        print(f"       Example extra_args for the workflow:", file=sys.stderr)
+        print(f"         --screaming-frog data/propelld_internal_html.xlsx --gsc-export data/gsc-export.xlsx --leads-csv data/seo-leads.xlsx --apply", file=sys.stderr)
+        sys.exit(2)
 
     grammar = load_grammar()
 

@@ -132,7 +132,16 @@ def load_urls(args):
         df = pd.read_csv(args.from_audit) if args.from_audit.endswith(".csv") \
             else pd.read_excel(args.from_audit)
         if args.filter_reason:
-            df = df[df["reason"] == args.filter_reason]
+            # Accept comma-separated list; also handle old/new naming
+            wanted = set(r.strip() for r in args.filter_reason.split(","))
+            # Backward compat: old audit outputs use 'unknown-target-post',
+            # new outputs (post 10-Jul fix) use 'target-not-in-tier-map'.
+            # If user asks for either, match both.
+            if "target-not-in-tier-map" in wanted:
+                wanted.add("unknown-target-post")
+            if "unknown-target-post" in wanted:
+                wanted.add("target-not-in-tier-map")
+            df = df[df["reason"].isin(wanted)]
         if args.filter_action:
             df = df[df["action"] == args.filter_action]
         if args.all_unique_targets:
@@ -149,7 +158,7 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--from-audit", default="data/internal-links-inventory.csv",
                    help="Path to internal-links-inventory.csv from audit_internal_links.py")
-    p.add_argument("--filter-reason", default="target-not-in-tier-map",
+    p.add_argument("--filter-reason", default="unknown-target-post,target-not-in-tier-map",
                    help="Filter audit rows by 'reason' column")
     p.add_argument("--filter-action", default=None,
                    help="Filter audit rows by 'action' column")
@@ -172,6 +181,15 @@ def main():
     if args.limit > 0:
         urls = urls[:args.limit]
     print(f"URLs to check: {len(urls):,}")
+
+    if not urls:
+        print(f"\nERROR: No URLs matched. Common causes:")
+        print(f"  - --from-audit file {args.from_audit!r} has no rows matching")
+        print(f"    --filter-reason={args.filter_reason!r} --filter-action={args.filter_action!r}")
+        print(f"  - Check the file's actual reason values with:")
+        print(f"      python -c \"import pandas as pd; print(pd.read_csv(%r)['reason'].value_counts())\"" % args.from_audit)
+        print(f"  - Or pass --all-unique-targets to check every unique target regardless of reason.")
+        sys.exit(1)
 
     session = requests.Session()
     session.headers["User-Agent"] = UA
