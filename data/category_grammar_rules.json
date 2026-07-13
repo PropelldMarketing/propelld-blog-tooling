@@ -1,97 +1,165 @@
 {
-  "_description": "Per-category linking grammar. Encodes the rules from internal-linking-strategy-v3.docx §5.",
+  "_description": "Per-category linking grammar. Encodes the rules from internal-linking-strategy-v3.docx \u00a75.",
   "conversion_proximity_map": {
-    "Education Loans":                    80,
-    "Finance & Credit Education":         70,
-    "Study Abroad":                       60,
-    "Courses & Careers":                  40,
-    "Government Schemes & Scholarships":  30,
-    "Exams & Counselling":                25
+    "Education Loans": 80,
+    "Finance & Credit Education": 70,
+    "Study Abroad": 60,
+    "Courses & Careers": 40,
+    "Government Schemes & Scholarships": 30,
+    "Exams & Counselling": 25
   },
   "tier_inbound_targets": {
-    "T0":  { "target_min": 100, "target_max": 999999 },
-    "T1P": { "target_min": 200, "target_max": 300 },
-    "T1":  { "target_min": 30,  "target_max": 60 },
-    "T2":  { "target_min": 15,  "target_max": 30 },
-    "T3":  { "target_min": 5,   "target_max": 15 },
-    "T4":  { "target_min": 2,   "target_max": 5 }
+    "T0": {
+      "target_min": 100,
+      "target_max": 999999
+    },
+    "T1P": {
+      "target_min": 200,
+      "target_max": 300
+    },
+    "T1": {
+      "target_min": 30,
+      "target_max": 60
+    },
+    "T2": {
+      "target_min": 15,
+      "target_max": 30
+    },
+    "T3": {
+      "target_min": 5,
+      "target_max": 15
+    },
+    "T4": {
+      "target_min": 2,
+      "target_max": 5
+    }
   },
   "tier_outbound_quotas": {
-    "T0":  { "min": 0, "max": 2 },
-    "T1P": { "min": 8, "max": 14 },
-    "T1":  { "min": 8, "max": 12 },
-    "T2":  { "min": 6, "max": 10 },
-    "T3":  { "min": 4, "max": 7 },
-    "T4":  { "min": 3, "max": 5 }
+    "T0": {
+      "min": 0,
+      "max": 2
+    },
+    "T1P": {
+      "min": 8,
+      "max": 14
+    },
+    "T1": {
+      "min": 8,
+      "max": 12
+    },
+    "T2": {
+      "min": 6,
+      "max": 10
+    },
+    "T3": {
+      "min": 4,
+      "max": 7
+    },
+    "T4": {
+      "min": 3,
+      "max": 5
+    }
   },
   "categories": {
     "Education Loans": {
       "required_links": {
-        "sibling_intra_category":     2,
-        "category_pillars":           2,
-        "facet_hub_lender":           1,
-        "facet_hub_course":           1,
-        "t0_money_page":              1,
-        "mid_funnel_howto":           1
+        "sibling_intra_category": 2,
+        "category_pillars": 2,
+        "facet_hub_lender": 1,
+        "facet_hub_course": 1,
+        "t0_money_page": 1,
+        "mid_funnel_howto": 1
       },
-      "forbidden_target_categories": ["Government Schemes & Scholarships"],
-      "forbidden_target_tiers":      ["T4"],
-      "anchor_mix":                  { "lender_specific": 0.6, "course_specific": 0.3, "generic_commercial": 0.1 }
+      "forbidden_target_categories": [
+        "Government Schemes & Scholarships"
+      ],
+      "forbidden_target_tiers": [
+        "T4"
+      ],
+      "anchor_mix": {
+        "lender_specific": 0.6,
+        "course_specific": 0.3,
+        "generic_commercial": 0.1
+      }
     },
     "Study Abroad": {
       "required_links": {
-        "sibling_intra_category":  2,
-        "category_pillars":        2,
-        "facet_hub_region":        1,
-        "facet_hub_course":        1,
-        "t0_money_page":           1,
-        "entrance_exam_post":      1
+        "sibling_intra_category": 2,
+        "category_pillars": 2,
+        "facet_hub_region": 1,
+        "facet_hub_course": 1,
+        "t0_money_page": 1,
+        "entrance_exam_post": 1
       },
-      "forbidden_target_categories": ["Government Schemes & Scholarships"],
-      "forbidden_target_tiers":      ["T4"],
-      "anchor_mix":                  { "destination_specific": 0.5, "exam_related": 0.25, "commercial": 0.25 }
+      "forbidden_target_categories": [
+        "Government Schemes & Scholarships"
+      ],
+      "forbidden_target_tiers": [
+        "T4"
+      ],
+      "anchor_mix": {
+        "destination_specific": 0.5,
+        "exam_related": 0.25,
+        "commercial": 0.25
+      }
     },
     "Courses & Careers": {
       "required_links": {
-        "sibling_intra_category":  2,
-        "category_pillars":        2,
-        "facet_hub_course":        1,
-        "facet_hub_exam":          1,
-        "career_or_salary":        1,
-        "loan_for_course":         1
+        "sibling_intra_category": 2,
+        "category_pillars": 2,
+        "facet_hub_course": 1,
+        "facet_hub_exam": 1,
+        "career_or_salary": 1,
+        "loan_for_course": 1
       },
-      "forbidden_target_categories": ["Government Schemes & Scholarships"],
-      "anchor_mix":                  { "course_name": 0.5, "career": 0.3, "commercial": 0.2 }
+      "forbidden_target_categories": [
+        "Government Schemes & Scholarships"
+      ],
+      "anchor_mix": {
+        "course_name": 0.5,
+        "career": 0.3,
+        "commercial": 0.2
+      }
     },
     "Exams & Counselling": {
       "required_links": {
-        "sibling_intra_category":  2,
-        "category_pillars":        2,
-        "facet_hub_exam":          1,
-        "facet_hub_course":        1,
-        "after_exam_or_colleges":  1,
-        "commercial_matched":      1
+        "sibling_intra_category": 2,
+        "category_pillars": 2,
+        "facet_hub_exam": 1,
+        "facet_hub_course": 1,
+        "after_exam_or_colleges": 1,
+        "commercial_matched": 1
       },
-      "forbidden_target_categories": ["Government Schemes & Scholarships"],
-      "anchor_mix":                  { "exam_related": 0.6, "course_bridge": 0.25, "commercial": 0.15 }
+      "forbidden_target_categories": [
+        "Government Schemes & Scholarships"
+      ],
+      "anchor_mix": {
+        "exam_related": 0.6,
+        "course_bridge": 0.25,
+        "commercial": 0.15
+      }
     },
     "Finance & Credit Education": {
       "required_links": {
-        "sibling_intra_category":  2,
-        "category_pillars":        1,
-        "t0_money_page":           1,
-        "commercial_ed_loan":      1
+        "sibling_intra_category": 2,
+        "category_pillars": 1,
+        "t0_money_page": 1,
+        "commercial_ed_loan": 1
       },
-      "anchor_mix":                  { "loan_related": 0.5, "credit_related": 0.3, "educational_finance": 0.2 }
+      "anchor_mix": {
+        "loan_related": 0.5,
+        "credit_related": 0.3,
+        "educational_finance": 0.2
+      }
     },
     "Government Schemes & Scholarships": {
       "required_links": {
-        "scholarship_facet_hub":   1,
-        "vs_comparison_post":      1,
-        "t0_money_page":           1
+        "scholarship_facet_hub": 1,
+        "vs_comparison_post": 1,
+        "t0_money_page": 1
       },
-      "no_pillars":              true,
-      "no_widget_promotion":     true
+      "no_pillars": true,
+      "no_widget_promotion": true
     }
   },
   "t0_money_pages": [
@@ -100,23 +168,63 @@
     "/site/mba-education-loan",
     "/site/upskilling-loan",
     "/site/education-loan-emi-calculator",
-    "/site/neet-college-predictor"
+    "/site/neet-college-predictor",
+    "/site/lp/study-loan-eligibility"
   ],
   "commercial_keywords_lexicon": {
     "high": {
-      "education-loan": 50, "college-loan": 50, "mba-loan": 50, "student-loan": 40,
-      "no-collateral": 35, "without-collateral": 35, "no-cost-emi": 35, "abroad-loan": 40,
-      "loan": 30, "interest-rate": 25, "emi": 25, "emi-calculator": 35, "cibil": 30,
-      "credit-score": 25, "best-": 20, "top-": 12, "vs": 15, "compare": 15, "review": 12,
-      "eligibility": 25, "apply": 20, "documents-required": 25, "lender": 25, "nbfc": 25,
-      "sbi": 18, "hdfc": 20, "credila": 22, "icici": 18, "avanse": 18, "incred": 18,
-      "auxilo": 18, "axis": 15, "tax-benefit": 22, "80e": 22, "moratorium": 18,
-      "prepayment": 15, "refinance": 20, "repayment": 15, "without-co-applicant": 25,
-      "loan-against-property": 30, "low-cibil": 25
+      "education-loan": 50,
+      "college-loan": 50,
+      "mba-loan": 50,
+      "student-loan": 40,
+      "no-collateral": 35,
+      "without-collateral": 35,
+      "no-cost-emi": 35,
+      "abroad-loan": 40,
+      "loan": 30,
+      "interest-rate": 25,
+      "emi": 25,
+      "emi-calculator": 35,
+      "cibil": 30,
+      "credit-score": 25,
+      "best-": 20,
+      "top-": 12,
+      "vs": 15,
+      "compare": 15,
+      "review": 12,
+      "eligibility": 25,
+      "apply": 20,
+      "documents-required": 25,
+      "lender": 25,
+      "nbfc": 25,
+      "sbi": 18,
+      "hdfc": 20,
+      "credila": 22,
+      "icici": 18,
+      "avanse": 18,
+      "incred": 18,
+      "auxilo": 18,
+      "axis": 15,
+      "tax-benefit": 22,
+      "80e": 22,
+      "moratorium": 18,
+      "prepayment": 15,
+      "refinance": 20,
+      "repayment": 15,
+      "without-co-applicant": 25,
+      "loan-against-property": 30,
+      "low-cibil": 25
     },
     "medium": {
-      "fees": 8, "cost": 8, "guide": 5, "how-to": 5, "calculator": 12,
-      "complete-guide": 8, "process": 7, "financing": 12, "funding": 8
+      "fees": 8,
+      "cost": 8,
+      "guide": 5,
+      "how-to": 5,
+      "calculator": 12,
+      "complete-guide": 8,
+      "process": 7,
+      "financing": 12,
+      "funding": 8
     }
   }
 }
