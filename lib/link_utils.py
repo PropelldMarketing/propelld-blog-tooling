@@ -157,3 +157,81 @@ def link_count(html: str) -> int:
     if not html:
         return 0
     return len(extract_links(html))
+
+
+def remove_link(html: str, target_url: str, anchor_text: str = None,
+                position: int = None, occurrence: int = 0) -> tuple:
+    """
+    Remove an <a> tag from HTML by unwrapping it (keeps the anchor text as plain
+    text so the sentence doesn't become gibberish). Returns (new_html, removed_count).
+
+    Matches by target_url (required). If anchor_text is provided, matches only
+    links with that exact anchor. If multiple matches exist, `occurrence` picks
+    which one (0-indexed).
+    """
+    if not html or not target_url:
+        return html, 0
+    soup = BeautifulSoup(html, "html.parser")
+    target_norm = normalize_url(target_url)
+    matches = []
+    for a in soup.find_all("a", href=True):
+        if normalize_url(a["href"]) != target_norm:
+            continue
+        if anchor_text is not None and a.get_text().strip() != anchor_text.strip():
+            continue
+        matches.append(a)
+    if not matches:
+        return html, 0
+    if occurrence >= len(matches):
+        return html, 0
+    a = matches[occurrence]
+    # Unwrap: replace <a>text</a> with just text
+    a.unwrap()
+    return str(soup), 1
+
+
+def remove_duplicate_links(html: str, target_url: str, keep_n: int = 1) -> tuple:
+    """
+    Keep the first `keep_n` occurrences of links to `target_url`, unwrap the rest.
+    Returns (new_html, removed_count).
+    """
+    if not html or not target_url or keep_n < 0:
+        return html, 0
+    soup = BeautifulSoup(html, "html.parser")
+    target_norm = normalize_url(target_url)
+    matches = [a for a in soup.find_all("a", href=True)
+               if normalize_url(a["href"]) == target_norm]
+    if len(matches) <= keep_n:
+        return html, 0
+    removed = 0
+    for a in matches[keep_n:]:
+        a.unwrap()
+        removed += 1
+    return str(soup), removed
+
+
+def rewrite_anchor(html: str, target_url: str, new_anchor: str,
+                   old_anchor: str = None, occurrence: int = 0) -> tuple:
+    """
+    Change the anchor text of an existing <a href=target_url> tag.
+    If old_anchor is provided, matches only that exact anchor text.
+    Returns (new_html, rewrites_count).
+    """
+    if not html or not target_url or not new_anchor:
+        return html, 0
+    soup = BeautifulSoup(html, "html.parser")
+    target_norm = normalize_url(target_url)
+    matches = []
+    for a in soup.find_all("a", href=True):
+        if normalize_url(a["href"]) != target_norm:
+            continue
+        if old_anchor is not None and a.get_text().strip() != old_anchor.strip():
+            continue
+        matches.append(a)
+    if not matches or occurrence >= len(matches):
+        return html, 0
+    a = matches[occurrence]
+    # Replace all children with just the new anchor text
+    a.clear()
+    a.append(new_anchor)
+    return str(soup), 1

@@ -15,6 +15,7 @@ on:
           - link_recommender
           - anchor_refiner
           - bulk_apply_links
+          - bulk_apply_audit
           - link_health_report
           - check_url_health
           - refresh_hub_data
