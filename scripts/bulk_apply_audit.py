@@ -124,6 +124,12 @@ def apply_to_item(item, source_rows, t0_pages, anchor_library, used_anchors, dry
     kills = source_rows[source_rows["action"] == "KILL"]
 
     # --- REWRITEs ---
+    # If the CSV has 'refined_action' and 'refined_anchor' columns (from
+    # refine_audit_rewrites.py), those take precedence. That means:
+    #   refined_action == "rewrite"    -> use refined_anchor
+    #   refined_action == "kill"       -> unwrap the link entirely (treat as KILL)
+    #   refined_action == "leave-alone" -> skip
+    # If no refined_* columns, fall back to library lookup (old behavior).
     for _, row in rewrites.iterrows():
         field = row.get("source_body_field") or "post-body"
         if field not in bodies:
@@ -131,7 +137,32 @@ def apply_to_item(item, source_rows, t0_pages, anchor_library, used_anchors, dry
             continue
         tgt = row["target_url"]
         old_anchor = str(row.get("anchor_text", "")).strip() or None
-        new_anchor = pick_replacement_anchor(tgt, anchor_library, used_anchors)
+
+        refined_action = str(row.get("refined_action", "")).strip().lower() if "refined_action" in row.index else ""
+        refined_anchor_val = row.get("refined_anchor") if "refined_anchor" in row.index else None
+        if isinstance(refined_anchor_val, float) and pd.isna(refined_anchor_val):
+            refined_anchor_val = None
+
+        if refined_action == "leave-alone":
+            skipped += 1
+            continue
+        if refined_action == "kill":
+            new_html, n = remove_link(bodies[field], tgt, anchor_text=old_anchor)
+            if n > 0:
+                bodies[field] = new_html
+                kills_done += 1
+            else:
+                skipped += 1
+            continue
+        if refined_action == "rewrite" and refined_anchor_val:
+            new_anchor = str(refined_anchor_val).strip()
+        else:
+            # No refinement available — fall back to library lookup.
+            # This is the OLD context-blind path; it's here only as a safety
+            # net when the CSV wasn't refined. Vaishali-approved runs
+            # should always have refined_* columns.
+            new_anchor = pick_replacement_anchor(tgt, anchor_library, used_anchors)
+
         new_html, n = rewrite_anchor(bodies[field], tgt, new_anchor, old_anchor=old_anchor)
         if n > 0:
             bodies[field] = new_html

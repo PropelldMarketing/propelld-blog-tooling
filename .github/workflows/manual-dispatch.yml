@@ -14,6 +14,7 @@ on:
           - priority_scorer
           - link_recommender
           - anchor_refiner
+          - refine_audit_rewrites
           - bulk_apply_links
           - bulk_apply_audit
           - link_health_report

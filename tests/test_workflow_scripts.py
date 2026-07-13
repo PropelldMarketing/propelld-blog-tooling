@@ -16,7 +16,7 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 SCRIPTS_IN_WORKFLOW = [
     "publish_facet_items", "check_facet_content", "audit_internal_links",
-    "priority_scorer", "link_recommender", "anchor_refiner",
+    "priority_scorer", "link_recommender", "anchor_refiner", "refine_audit_rewrites",
     "bulk_apply_links", "bulk_apply_audit", "link_health_report", "refresh_hub_data",
     "refresh_links", "snapshot", "rollback", "rollback_audit_rewrites", "check_url_health",
 ]
