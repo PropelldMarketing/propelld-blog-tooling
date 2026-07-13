@@ -22,6 +22,7 @@ on:
           - refresh_links
           - snapshot
           - rollback
+          - rollback_audit_rewrites
       apply:
         description: 'Run with --apply (actually write changes). Defaults to dry-run.'
         required: false
@@ -63,6 +64,8 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: ${{ inputs.script }}-${{ github.run_id }}
-          path: out/
+          path: |
+            out/
+            snapshots/
           if-no-files-found: ignore
           retention-days: 30
