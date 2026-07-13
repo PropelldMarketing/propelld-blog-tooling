@@ -35,6 +35,31 @@ def load_tier_map(f):
     df["url"] = df["url"].str.rstrip("/")
     return df.set_index("url")[["tier","category"]].to_dict("index")
 
+
+def load_t0_pages():
+    """Load T0 money-page URLs from category_grammar_rules.json.
+    These pages are not blog posts and won't appear in posts-with-tiers.xlsx,
+    so we inject them into the tier map so classify() can recognize them."""
+    p = Path(__file__).parent.parent / "data" / "category_grammar_rules.json"
+    if not p.exists():
+        return []
+    try:
+        return json.load(open(p)).get("t0_money_pages", [])
+    except Exception as e:
+        print(f"WARN: could not load T0 list: {e}")
+        return []
+
+
+def inject_t0_into_tier_map(tier_map, t0_pages):
+    """Add T0 entries to the tier map so classifier sees them as T0/Money Page."""
+    added = 0
+    for u in t0_pages:
+        key = u.rstrip("/")
+        if key not in tier_map:
+            tier_map[key] = {"tier": "T0", "category": "Money Page"}
+            added += 1
+    return added
+
 def inventory_from_snapshot(snap_dir):
     records = []
     for jp in Path(snap_dir).glob("*.json"):
@@ -138,6 +163,9 @@ def main():
     print("Loading tier map...")
     tier_map = load_tier_map(a.tier_file)
     print(f"  Posts: {len(tier_map)}")
+    t0_pages = load_t0_pages()
+    n_added = inject_t0_into_tier_map(tier_map, t0_pages)
+    print(f"  T0 money pages injected: {n_added} (of {len(t0_pages)} declared)")
 
     if a.from_snapshot:
         print(f"Inventorying from {a.from_snapshot}...")
