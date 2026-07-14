@@ -97,6 +97,62 @@ def test_check_url_health_handles_empty_filter():
     assert "No URLs matched" in out
 
 
+def test_requirements_txt_is_complete():
+    """Every workflow script that imports third-party packages must be pip-installable.
+    Catches the truncation bug we hit where anthropic got dropped mid-write."""
+    req_path = REPO / "requirements.txt"
+    content = req_path.read_text()
+    # Every line should end at a newline, and the last line should also
+    # (mid-line truncation always drops the trailing newline)
+    assert content.endswith("\n"), (
+        f"requirements.txt does not end with a newline — likely truncated. "
+        f"Last 100 chars: {content[-100:]!r}"
+    )
+    # Every non-comment line should have a valid package spec
+    lines = [ln.strip() for ln in content.splitlines() if ln.strip() and not ln.strip().startswith("#")]
+    for ln in lines:
+        # A comment can be inline (after the version pin). Strip it.
+        spec = ln.split("#")[0].strip()
+        assert spec, f"Empty spec line in requirements.txt: {ln!r}"
+        assert any(op in spec for op in ("==", ">=", "<=", "~=", ">", "<")) or spec.isidentifier(), (
+            f"Bad requirements.txt line: {ln!r}"
+        )
+    # Critical packages must be present
+    critical = ["requests", "pandas", "openpyxl", "beautifulsoup4", "anthropic"]
+    for pkg in critical:
+        assert any(ln.startswith(pkg) for ln in lines), (
+            f"Missing critical package '{pkg}' in requirements.txt. "
+            f"Present: {[ln.split('>=')[0].split('~')[0].split('==')[0].strip() for ln in lines]}"
+        )
+
+
+def test_workflow_yaml_is_complete():
+    """Catches truncation bugs in the GitHub Actions workflow YAML."""
+    import yaml
+    p = REPO / ".github" / "workflows" / "manual-dispatch.yml"
+    content = p.read_text()
+    # Must end at a newline
+    assert content.endswith("\n"), (
+        f"workflow yml does not end with a newline — likely truncated. "
+        f"Last 100 chars: {content[-100:]!r}"
+    )
+    # Must be valid YAML
+    d = yaml.safe_load(content)
+    assert d, "workflow yml is empty"
+    # Must have the required top-level keys (yaml parses "on" as True due to bool coercion)
+    assert "name" in d
+    assert True in d or "on" in d, f"missing 'on' key. Keys: {list(d.keys())}"
+    assert "jobs" in d
+    assert "run" in d["jobs"], "missing 'run' job"
+    # The 'run' job must have both an install step AND an upload-artifact step
+    steps = d["jobs"]["run"]["steps"]
+    step_names = [s.get("name", str(s.get("uses", ""))) for s in steps]
+    has_install = any("Install" in n or "install" in n for n in step_names)
+    has_upload = any("upload" in n.lower() or "artifact" in n.lower() for n in step_names)
+    assert has_install, f"missing install step. Steps: {step_names}"
+    assert has_upload, f"missing upload-artifact step. Steps: {step_names}"
+
+
 if __name__ == "__main__":
     print("Running smoke tests for workflow scripts...\n")
     passed = failed = 0
