@@ -8,20 +8,24 @@ on:
         required: true
         type: choice
         options:
-          - publish_facet_items
-          - check_facet_content
+          # Read-only diagnostics (safe defaults, run first)
           - audit_internal_links
-          - priority_scorer
+          - check_url_health
+          - check_facet_content
+          - link_health_report
+          # Refiners (produce CSVs for review, no site changes)
           - link_recommender
           - anchor_refiner
           - refine_audit_rewrites
-          - bulk_apply_links
+          - priority_scorer
+          # Direct writes to Webflow (require snapshot + --apply)
           - bulk_apply_audit
-          - link_health_report
-          - check_url_health
+          - bulk_apply_links
           - refresh_hub_data
           - refresh_links
           - snapshot
+          - publish_facet_items
+          # Rollback / recovery
           - rollback
           - rollback_audit_rewrites
       apply:
