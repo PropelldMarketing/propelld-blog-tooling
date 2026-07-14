@@ -153,6 +153,26 @@ def test_workflow_yaml_is_complete():
     assert has_upload, f"missing upload-artifact step. Steps: {step_names}"
 
 
+
+def test_refine_handles_nan_anchor():
+    """refine_audit_rewrites must handle pandas NaN in anchor_text (from empty CSV cells)."""
+    import sys as _sys
+    _sys.path.insert(0, str(REPO))
+    if "scripts.refine_audit_rewrites" in _sys.modules:
+        del _sys.modules["scripts.refine_audit_rewrites"]
+    from scripts.refine_audit_rewrites import find_anchor_context
+    # Should not crash on NaN
+    result = find_anchor_context(
+        "<p>text <a href='/foo'>link</a> more</p>", "/foo", float("nan")
+    )
+    assert result is not None, "should still find the link"
+    # None also works
+    result = find_anchor_context(
+        "<p>text <a href='/foo'>link</a> more</p>", "/foo", None
+    )
+    assert result is not None
+
+
 if __name__ == "__main__":
     print("Running smoke tests for workflow scripts...\n")
     passed = failed = 0

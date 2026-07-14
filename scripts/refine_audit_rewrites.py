@@ -81,7 +81,11 @@ def find_anchor_context(html, target_url, anchor_text):
         return None
     soup = BeautifulSoup(html, "html.parser")
     target_norm = normalize_url(target_url)
-    anchor_norm = (anchor_text or "").strip()
+    # anchor_text can be str, None, or float NaN (pandas empty cell). Normalize.
+    if anchor_text is None or (isinstance(anchor_text, float) and str(anchor_text) == "nan"):
+        anchor_norm = ""
+    else:
+        anchor_norm = str(anchor_text).strip()
 
     for a in soup.find_all("a", href=True):
         if normalize_url(a["href"]) != target_norm:
