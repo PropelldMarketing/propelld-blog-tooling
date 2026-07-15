@@ -18,6 +18,9 @@ on:
           - anchor_refiner
           - refine_audit_rewrites
           - preview_link_insertions
+          - insert_planned_links
+          - preview_insertion_plans
+          - plan_insertions
           - priority_scorer
           # Direct writes to Webflow (require snapshot + --apply)
           - bulk_apply_audit
