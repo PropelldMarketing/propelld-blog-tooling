@@ -17,6 +17,7 @@ on:
           - link_recommender
           - anchor_refiner
           - refine_audit_rewrites
+          - preview_link_insertions
           - priority_scorer
           # Direct writes to Webflow (require snapshot + --apply)
           - bulk_apply_audit

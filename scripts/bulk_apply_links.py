@@ -27,6 +27,46 @@ from lib.webflow_client import WebflowClient, COLLECTIONS, BLOG_BODY_FIELDS, get
 from lib.snapshots import snapshot_all_blogs
 from lib.link_utils import insert_link_in_body, link_count
 
+
+
+# ---------- UTM handling for T0 CTA targets ----------
+import json as _json
+from pathlib import Path as _Path
+
+_T0_PAGES = None
+
+def _load_t0_pages():
+    global _T0_PAGES
+    if _T0_PAGES is not None:
+        return _T0_PAGES
+    p = _Path(__file__).parent.parent / "data" / "category_grammar_rules.json"
+    if not p.exists():
+        _T0_PAGES = set()
+    else:
+        try:
+            _T0_PAGES = {u.rstrip("/") for u in _json.load(open(p)).get("t0_money_pages", [])}
+        except Exception:
+            _T0_PAGES = set()
+    return _T0_PAGES
+
+
+def append_utm_if_t0(target_url, source_url):
+    """If target is a T0 CTA landing page, append the standard body-CTA UTM
+    parameters so marketing attribution stays intact for auto-inserted links.
+    Otherwise return target_url unchanged.
+
+    Pattern matches what already exists on Propelld body CTAs:
+        ?utm_source=website&utm_adgroup=blog-body&utm_campaign=<source-path>
+    """
+    t0 = _load_t0_pages()
+    if target_url.rstrip("/") not in t0:
+        return target_url
+    # Don't double-append if target already has query string
+    if "?" in target_url:
+        return target_url
+    src = source_url.rstrip("/")
+    return f"{target_url}?utm_source=website&utm_adgroup=blog-body&utm_campaign={src}"
+
 HALT_ERROR_RATE = 0.05
 
 def load_recs(path):
@@ -52,7 +92,11 @@ def apply_to_item(client, item, recs, dry_run):
     for _, rec in recs.iterrows():
         field = choose_body_field(bodies, rec["suggested_position"])
         current = bodies[field]
-        if rec["target_url"] in current:
+        # Idempotency: skip if either the raw target or the UTM'd variant
+        # is already in the body.
+        raw_tgt = rec["target_url"]
+        utm_tgt = append_utm_if_t0(raw_tgt, rec["source_url"])
+        if raw_tgt in current or (utm_tgt != raw_tgt and utm_tgt in current):
             skipped += 1
             continue
         # Prefer refined_anchor (Option B — context-aware pass) if present + non-empty,
@@ -60,8 +104,10 @@ def apply_to_item(client, item, recs, dry_run):
         anchor = rec.get("refined_anchor") if "refined_anchor" in rec else None
         if not anchor or (isinstance(anchor, float) and pd.isna(anchor)):
             anchor = rec["anchor_text"]
+        # Apply UTM params for T0 CTA targets so marketing attribution survives
+        final_target = append_utm_if_t0(rec["target_url"], rec["source_url"])
         bodies[field] = insert_link_in_body(current, anchor,
-            rec["target_url"], rec["suggested_position"])
+            final_target, rec["suggested_position"])
         inserted += 1
     after = {k: link_count(v) for k, v in bodies.items()}
     log = {"item_id": item["id"], "slug": fd.get("slug"),
@@ -88,6 +134,9 @@ def main():
     p.add_argument("--tier-filter", default=None)
     p.add_argument("--apply", action="store_true")
     p.add_argument("--skip-snapshot", action="store_true")
+    p.add_argument("--limit", type=int, default=0,
+                   help="Only process first N source posts (0 = all). "
+                        "Use for small-batch testing before full-scale apply.")
     a = p.parse_args()
 
     print(f"Loading recommendations from {a.recommendations}...")
@@ -111,7 +160,10 @@ def main():
     print(f"  {len(slug_to_id)} posts indexed")
 
     logs, errors, processed = [], 0, 0
-    grouped = recs.groupby("source_url")
+    grouped = list(recs.groupby("source_url"))
+    if a.limit > 0:
+        grouped = grouped[:a.limit]
+        print(f"  --limit applied: processing first {len(grouped)} source posts")
     print(f"\nProcessing {len(grouped)} source posts...")
     for source_url, post_recs in grouped:
         slug = source_url.split("/")[-1]
