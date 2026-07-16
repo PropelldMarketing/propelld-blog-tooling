@@ -38,7 +38,8 @@ def main():
                    help="Plans CSV. Default: data/ (committed). Also accepts out/ (workflow output).")
     p.add_argument("--output", default="out/insertion-preview.html")
     p.add_argument("--slugs", default=None, help="Comma-separated slugs to preview")
-    p.add_argument("--limit", type=int, default=10)
+    p.add_argument("--limit", type=int, default=0,
+                   help="Preview only first N sources (0 = all sources in the CSV, default)")
     p.add_argument("--apply", action="store_true")
     a = p.parse_args()
 
@@ -52,7 +53,8 @@ def main():
         wanted = {"/site/blog/" + s.strip() for s in a.slugs.split(",")}
         sources = [u for u in insertions["source_url"].unique() if u in wanted]
     else:
-        sources = list(insertions["source_url"].unique())[:a.limit]
+        all_sources = list(insertions["source_url"].unique())
+        sources = all_sources[:a.limit] if a.limit > 0 else all_sources
     print(f"  Previewing {len(sources)} sources")
 
     print("Fetching bodies from Webflow...")
