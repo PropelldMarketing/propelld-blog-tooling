@@ -34,7 +34,8 @@ from scripts.insert_planned_links import md_link_to_html, apply_insertion_to_par
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--plans", default="out/insertion-plans.csv")
+    p.add_argument("--plans", default="data/insertion-plans.csv",
+                   help="Plans CSV. Default: data/ (committed). Also accepts out/ (workflow output).")
     p.add_argument("--output", default="out/insertion-preview.html")
     p.add_argument("--slugs", default=None, help="Comma-separated slugs to preview")
     p.add_argument("--limit", type=int, default=10)

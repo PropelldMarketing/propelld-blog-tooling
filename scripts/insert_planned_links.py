@@ -190,7 +190,8 @@ def process_source(item, plans_for_source, dry_run):
 
 def main():
     p = argparse.ArgumentParser()
-    p.add_argument("--plans", default="out/insertion-plans.csv")
+    p.add_argument("--plans", default="data/insertion-plans.csv",
+                   help="Plans CSV. Default: data/ (committed). Also accepts out/ (workflow output).")
     p.add_argument("--snapshot-dir", default="snapshots/")
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--skip-snapshot", action="store_true")
