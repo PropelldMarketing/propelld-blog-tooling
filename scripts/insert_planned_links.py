@@ -50,11 +50,35 @@ HALT_ERROR_RATE = 0.05
 MD_LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
 
 
+# Patterns Haiku sometimes hallucinates — insertions using these must be skipped
+BAD_URL_PATTERNS = [
+    r'^https?://example\.',       # example.com and similar
+    r'^https?://www\.example\.',
+    r'^\(?link\)?$',              # literal "link" or "(link)"
+    r'^\(?url\)?$',
+    r'^#$',                        # placeholder anchor
+    r'^javascript:',
+]
+
+
+def is_bad_url(href):
+    """Return True if href is a hallucinated placeholder we should refuse to insert."""
+    if not href:
+        return True
+    h = href.strip().lower()
+    for pat in BAD_URL_PATTERNS:
+        if re.match(pat, h):
+            return True
+    return False
+
+
 def normalize_href(href, source_url):
     """Normalize an href to an absolute /site/... path.
     Handles:
       - relative paths ('../foo', './foo', 'foo') → resolve against source
       - propelld.com full URLs → strip host
+      - Haiku hallucinations 'https://site/foo' (fake host) → strip to /site/foo
+      - 'site/blog/foo' (missing leading slash) → prepend /
       - absolute /site/ paths → unchanged
     """
     href = href.strip()
@@ -64,15 +88,20 @@ def normalize_href(href, source_url):
         if href.startswith(prefix):
             href = href[len(prefix):]
             break
+    # Haiku hallucination pattern: "https://site/blog/foo" (missing propelld.com)
+    m = re.match(r'^https?://(site/.+)$', href)
+    if m:
+        href = "/" + m.group(1)
     if not href:
         return href
     # Already absolute path
     if href.startswith("/"):
         return href
+    # Missing leading slash but is a /site/ path
+    if href.startswith("site/"):
+        return "/" + href
     # Relative — resolve against source
-    # Source is like /site/blog/foo — the "directory" is /site/blog/
     src_dir = source_url.rsplit("/", 1)[0] + "/"
-    # Strip leading ./ or ../
     while href.startswith("../"):
         href = href[3:]
         src_dir = src_dir.rstrip("/").rsplit("/", 1)[0] + "/"
@@ -81,22 +110,47 @@ def normalize_href(href, source_url):
     return src_dir + href
 
 
-def md_link_to_html(new_sentence, source_url, preview_marker=False):
-    """Convert markdown-format links in the new_sentence to HTML <a> tags.
-    Normalizes any relative URLs to absolute /site/... paths, then applies
-    UTM handling for T0 CTA targets.
+# Match both markdown [anchor](url) AND HTML <a href="url">anchor</a>
+HTML_LINK_RE = re.compile(r'<a\s+href="([^"]+)"[^>]*>([^<]+)</a>', re.IGNORECASE)
 
-    If preview_marker=True, adds a data-preview-new="1" attribute so the
-    preview HTML can visually distinguish newly-inserted links. The executor
-    should call with preview_marker=False (default) so production HTML is clean.
+
+def md_link_to_html(new_sentence, source_url, preview_marker=False):
+    """Convert links in new_sentence to normalized HTML <a> tags.
+
+    Handles BOTH input formats Haiku can produce:
+      - Markdown: [anchor](url)     ← convert to HTML
+      - HTML: <a href="url">anchor</a>  ← normalize href, keep as HTML
+
+    For each link:
+      - Normalize URL to absolute /site/... path (strip fake hosts, resolve relative)
+      - Reject known-bad hallucinations (example.com, '(link)', etc.) — return
+        the sentence with that link REMOVED entirely rather than inserting broken.
+      - Apply UTM params for T0 CTA targets
+      - Add data-preview-new="1" for preview mode only
     """
     marker = ' data-preview-new="1"' if preview_marker else ''
-    def repl(m):
-        anchor = m.group(1)
-        href = normalize_href(m.group(2), source_url)
-        final = append_utm_if_t0(href, source_url)
+
+    def make_link(anchor, href):
+        if is_bad_url(href):
+            # Return just the anchor text — no broken link
+            return anchor
+        normalized = normalize_href(href, source_url)
+        if is_bad_url(normalized):
+            return anchor
+        final = append_utm_if_t0(normalized, source_url)
         return f'<a href="{final}"{marker}>{anchor}</a>'
-    return MD_LINK_RE.sub(repl, new_sentence)
+
+    def md_repl(m):
+        return make_link(m.group(1), m.group(2).strip())
+
+    def html_repl(m):
+        return make_link(m.group(2), m.group(1).strip())
+
+    # Order matters: convert markdown first (it doesn't overlap with HTML tags)
+    result = MD_LINK_RE.sub(md_repl, new_sentence)
+    # Then normalize any existing HTML tags (updates href, adds marker)
+    result = HTML_LINK_RE.sub(html_repl, result)
+    return result
 
 
 def apply_insertion_to_paragraph(soup, paragraph_idx, original_sentence, new_sentence_html):

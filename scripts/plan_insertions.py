@@ -225,8 +225,13 @@ def validate_insertion(decision, paragraphs):
         if orig_norm not in para_norm:
             return "original_sentence not found verbatim in paragraph"
     new = decision.get("new_sentence", "")
-    if not new or "](" not in new:  # sanity check markdown link is present
-        return "new_sentence missing markdown link"
+    if not new:
+        return "new_sentence is empty"
+    # Accept EITHER markdown [anchor](url) OR HTML <a href="url">anchor</a>
+    has_md = "](" in new
+    has_html = re.search(r'<a\s+href=', new, re.IGNORECASE) is not None
+    if not (has_md or has_html):
+        return "new_sentence missing any link (neither markdown nor HTML)"
     return None  # OK
 
 
