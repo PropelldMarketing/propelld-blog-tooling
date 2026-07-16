@@ -140,24 +140,52 @@ CONSTRAINTS
     original sentence's voice and rhythm.
   - Prefer relevance over quantity — 3 great insertions beat 5 mediocre ones.
 
+CRITICAL FAILURE MODES — READ CAREFULLY
+
+  ❌ FORBIDDEN: URL placeholders
+      new_sentence: "much like [EAMCET rank](link) works..."
+      new_sentence: "see [MBA syllabus](https://example.com/mba)..."
+      new_sentence: "check [SBI loan](url)..."
+      new_sentence: "learn [BTech fees](site/blog/btech-fees)..."   ← missing leading /
+
+  ✅ REQUIRED: use the EXACT target_url string from the candidate above.
+      Copy-paste the URL verbatim from the CANDIDATE INTERNAL LINKS list.
+      No shortening, no editing, no examples.
+
+  ❌ FORBIDDEN: paraphrasing original_sentence
+      Candidate paragraph has: "Students can check the fee structure online."
+      YOU write original_sentence: "Students may verify fees online."   ← REPHRASED, will fail
+
+  ✅ REQUIRED: copy the original_sentence character-for-character from the
+      paragraph text above. Include exact punctuation, casing, and any inline
+      formatting artifacts. If you can't find a sentence you want to modify
+      exactly as-is, SKIP that candidate.
+
+  ❌ FORBIDDEN: new_sentence without a markdown link
+      new_sentence: "much like EAMCET rank calculations work"   ← no [anchor](url)
+
+  ✅ REQUIRED: new_sentence MUST contain exactly one `[anchor text](target_url)`
+      markdown link, using the exact target_url from the candidate.
+
+
 OUTPUT — return ONLY this JSON, no other text:
 {{
   "decisions": [
     {{
       "candidate_num": 1,
       "action": "insert",
-      "target_url": "...",
+      "target_url": "/site/blog/exact-url-copied-from-candidate",
       "paragraph_idx": N,
-      "original_sentence": "EXACT text from paragraph P# above",
-      "new_sentence": "the SAME sentence rewritten with a natural anchor+link inline (using markdown [anchor](url) format)",
-      "anchor": "the anchor phrase you used",
+      "original_sentence": "EXACT text copied verbatim from paragraph P# above (character-for-character)",
+      "new_sentence": "the SAME sentence with a minimally-inserted [anchor phrase](/site/blog/exact-url-copied-from-candidate) using markdown link format",
+      "anchor": "the anchor phrase you used (must match what's between [ and ] in new_sentence)",
       "reasoning": "1 short sentence"
     }},
     {{
       "candidate_num": 2,
       "action": "skip",
-      "target_url": "...",
-      "reasoning": "why (e.g. topic mismatch, no natural fit)"
+      "target_url": "/site/blog/exact-url-copied-from-candidate",
+      "reasoning": "why (topic mismatch, no natural fit, no sentence I can modify verbatim, etc.)"
     }}
   ]
 }}"""
