@@ -81,7 +81,7 @@ def main():
             if plan.get("validation_error"):
                 errors.append(f"validation: {plan['validation_error']}")
                 continue
-            new_html = md_link_to_html(str(plan["new_sentence"]), src)
+            new_html = md_link_to_html(str(plan["new_sentence"]), src, preview_marker=True)
             try:
                 ok, reason = apply_insertion_to_paragraph(
                     soup,
@@ -138,15 +138,28 @@ def main():
                      color: #666; letter-spacing: 1px; }
       .before h3 { color: #b00; }
       .after h3 { color: #080; }
-      .after a[href^="/site/lp/"], .after a[href^="/site/education-loan"],
-      .after a[href^="/site/college-loan"], .after a[href^="/site/mba-education-loan"],
-      .after a { background: rgba(255, 240, 0, 0.3); padding: 2px; border-radius: 2px; }
+      .after a[data-preview-new="1"] {
+        background: #ffeb3b;
+        padding: 3px 5px; border-radius: 3px;
+        outline: 2px solid #ff9800;
+        font-weight: bold;
+      }
+      .no-inserts-warning { background: #fee; border-left: 4px solid #c33;
+        padding: 12px 16px; margin: 10px 0; color: #900; font-weight: bold; }
+      .success-banner { background: #efe; border-left: 4px solid #080;
+        padding: 12px 16px; margin: 10px 0; color: #060; }
     </style>
     """
 
+    total_applied = sum(len(pv["insertions"]) for pv in previews)
+    total_errors = sum(len(pv["errors"]) for pv in previews)
+    posts_with_no_inserts = sum(1 for pv in previews if len(pv["insertions"]) == 0)
     body_parts = [f"<h1>Insertion plan preview — {len(previews)} sources</h1>",
-                  f"<p>Generated {pd.Timestamp.now():%Y-%m-%d %H:%M IST}. "
-                  f"NEW inserted links shown highlighted in yellow. Existing links unhighlighted.</p>"]
+                  f"<p>Generated {pd.Timestamp.now():%Y-%m-%d %H:%M IST}.</p>",
+                  f"<p><b>Total insertions applied:</b> {total_applied}<br>"
+                  f"<b>Total errors/skips:</b> {total_errors}<br>"
+                  f"<b>Posts with zero insertions:</b> {posts_with_no_inserts} of {len(previews)}</p>",
+                  f"<p>NEW inserted links appear <span style='background:#ffeb3b; padding:2px 5px; outline:2px solid #ff9800; font-weight:bold; border-radius:3px;'>like this</span> in the AFTER column. If you don't see any highlights in a post, no insertions actually applied for that post (check the errors block for why).</p>"]
 
     for pv in previews:
         plans_html = "".join(
@@ -167,9 +180,11 @@ def main():
           <div class="post-header">
             <h2>{_html.escape(pv["slug"])}</h2>
             <div class="stats">
-              Insertions applied: {len(pv["insertions"])} |
+              Insertions applied: <b>{len(pv["insertions"])}</b> |
+              Errors/skips: <b>{len(pv["errors"])}</b> |
               Links: {pv["before_links"]} → {pv["after_links"]} ({pv["after_links"] - pv["before_links"]:+d})
             </div>
+            {'<div class="no-inserts-warning">⚠ NO INSERTIONS APPLIED to this post. Check errors below.</div>' if len(pv["insertions"]) == 0 else '<div class="success-banner">✓ ' + str(len(pv["insertions"])) + ' insertion(s) applied — highlighted in yellow below.</div>'}
           </div>
           {plans_html}
           {errors_html}

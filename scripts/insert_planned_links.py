@@ -81,15 +81,21 @@ def normalize_href(href, source_url):
     return src_dir + href
 
 
-def md_link_to_html(new_sentence, source_url):
+def md_link_to_html(new_sentence, source_url, preview_marker=False):
     """Convert markdown-format links in the new_sentence to HTML <a> tags.
     Normalizes any relative URLs to absolute /site/... paths, then applies
-    UTM handling for T0 CTA targets."""
+    UTM handling for T0 CTA targets.
+
+    If preview_marker=True, adds a data-preview-new="1" attribute so the
+    preview HTML can visually distinguish newly-inserted links. The executor
+    should call with preview_marker=False (default) so production HTML is clean.
+    """
+    marker = ' data-preview-new="1"' if preview_marker else ''
     def repl(m):
         anchor = m.group(1)
         href = normalize_href(m.group(2), source_url)
         final = append_utm_if_t0(href, source_url)
-        return f'<a href="{final}">{anchor}</a>'
+        return f'<a href="{final}"{marker}>{anchor}</a>'
     return MD_LINK_RE.sub(repl, new_sentence)
 
 
