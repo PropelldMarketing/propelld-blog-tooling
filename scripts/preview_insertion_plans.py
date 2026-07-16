@@ -78,8 +78,13 @@ def main():
         applied = []
         errors = []
         for _, plan in insertions[insertions["source_url"] == src].iterrows():
-            if plan.get("validation_error"):
-                errors.append(f"validation: {plan['validation_error']}")
+            # pandas returns float('nan') for empty cells — treat as "no error"
+            val_err = plan.get("validation_error")
+            has_val_err = (val_err is not None
+                           and not (isinstance(val_err, float) and str(val_err) == "nan")
+                           and str(val_err).strip() not in ("", "nan"))
+            if has_val_err:
+                errors.append(f"validation: {val_err}")
                 continue
             new_html = md_link_to_html(str(plan["new_sentence"]), src, preview_marker=True)
             try:

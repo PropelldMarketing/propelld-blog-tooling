@@ -168,9 +168,14 @@ def process_source(item, plans_for_source, dry_run):
         if plan.get("action") != "insert":
             skipped += 1
             continue
-        if plan.get("validation_error"):
+        # pandas NaN check — empty cells shouldn't count as errors
+        val_err = plan.get("validation_error")
+        has_val_err = (val_err is not None
+                       and not (isinstance(val_err, float) and str(val_err) == "nan")
+                       and str(val_err).strip() not in ("", "nan"))
+        if has_val_err:
             skipped += 1
-            errors.append(f"validation: {plan['validation_error']}")
+            errors.append(f"validation: {val_err}")
             continue
 
         # Idempotency: skip if target already in body (raw or UTM'd)

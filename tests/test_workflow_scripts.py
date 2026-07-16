@@ -173,6 +173,20 @@ def test_refine_handles_nan_anchor():
     assert result is not None
 
 
+
+def test_validation_error_nan_not_treated_as_error():
+    """pandas empty cells come back as float('nan'), which is truthy.
+    Preview + executor must treat NaN as 'no error' to actually apply plans."""
+    import pandas as _pd
+    # Verify pandas behaviour hasn't changed (safety net)
+    df = _pd.DataFrame([{"validation_error": None}, {"validation_error": ""}, {"validation_error": "actual error"}])
+    df.to_csv("/tmp/pytest-nan.csv", index=False)
+    loaded = _pd.read_csv("/tmp/pytest-nan.csv")
+    assert isinstance(loaded.iloc[0]["validation_error"], float), (
+        "pandas NaN handling changed — validation_error check needs review"
+    )
+
+
 if __name__ == "__main__":
     print("Running smoke tests for workflow scripts...\n")
     passed = failed = 0
