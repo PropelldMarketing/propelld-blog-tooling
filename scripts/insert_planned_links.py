@@ -50,12 +50,44 @@ HALT_ERROR_RATE = 0.05
 MD_LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
 
 
+def normalize_href(href, source_url):
+    """Normalize an href to an absolute /site/... path.
+    Handles:
+      - relative paths ('../foo', './foo', 'foo') → resolve against source
+      - propelld.com full URLs → strip host
+      - absolute /site/ paths → unchanged
+    """
+    href = href.strip()
+    # Strip protocol + host if present
+    for prefix in ("https://propelld.com", "http://propelld.com",
+                   "https://www.propelld.com", "http://www.propelld.com"):
+        if href.startswith(prefix):
+            href = href[len(prefix):]
+            break
+    if not href:
+        return href
+    # Already absolute path
+    if href.startswith("/"):
+        return href
+    # Relative — resolve against source
+    # Source is like /site/blog/foo — the "directory" is /site/blog/
+    src_dir = source_url.rsplit("/", 1)[0] + "/"
+    # Strip leading ./ or ../
+    while href.startswith("../"):
+        href = href[3:]
+        src_dir = src_dir.rstrip("/").rsplit("/", 1)[0] + "/"
+    if href.startswith("./"):
+        href = href[2:]
+    return src_dir + href
+
+
 def md_link_to_html(new_sentence, source_url):
     """Convert markdown-format links in the new_sentence to HTML <a> tags.
-    Also applies UTM handling for T0 CTA targets."""
+    Normalizes any relative URLs to absolute /site/... paths, then applies
+    UTM handling for T0 CTA targets."""
     def repl(m):
         anchor = m.group(1)
-        href = m.group(2).strip()
+        href = normalize_href(m.group(2), source_url)
         final = append_utm_if_t0(href, source_url)
         return f'<a href="{final}">{anchor}</a>'
     return MD_LINK_RE.sub(repl, new_sentence)
