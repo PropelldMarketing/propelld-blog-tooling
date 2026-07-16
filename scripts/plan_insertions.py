@@ -108,7 +108,7 @@ SOURCE POST
 BODY (paragraphs numbered P0, P1, P2, ...):
 {para_block}
 
-CANDIDATE INTERNAL LINKS (up to 5 per post):
+CANDIDATE INTERNAL LINKS (up to 10 for you to choose from — pick 3-5 that fit best):
 {cand_block}
 
 Your task: for EACH candidate, decide one of:
@@ -125,13 +125,20 @@ Your task: for EACH candidate, decide one of:
      where inserting it would read naturally.
 
 CONSTRAINTS
-  - Insert at most 5 links per post.
+  - TARGET 3-5 insertions per post. Fewer is OK if candidates aren't natural
+    fits, but try to reach at least 3 if the candidates plausibly work.
+  - Insert at most 5 links per post (hard ceiling).
   - No 2 insertions in the same paragraph (distribute them across the body).
   - Never insert into the very first or very last paragraph (intro/CTA area).
   - Never invent an original_sentence — it must appear VERBATIM in the paragraph text above.
   - Anchor text: 3-8 words, describes the target, natural in the sentence.
   - Never use "click here", "read more", "learn more", "this article" as anchors.
-  - Prefer relevance over quantity — 2 great insertions beat 5 mediocre ones.
+  - PUNCTUATION: match the tone of the original sentence. Do NOT introduce em
+    dashes (— or --) unless the original sentence already uses them. Prefer
+    commas, colons, "such as", "including", "like", parenthetical (...) instead.
+  - The rewrite should feel like a light edit, not a restructure. Preserve the
+    original sentence's voice and rhythm.
+  - Prefer relevance over quantity — 3 great insertions beat 5 mediocre ones.
 
 OUTPUT — return ONLY this JSON, no other text:
 {{
@@ -274,7 +281,7 @@ def main():
 
         # Build candidates (top 5 recs for this source)
         candidates = []
-        for _, r in source_recs.head(5).iterrows():
+        for _, r in source_recs.head(10).iterrows():  # widened from 5 to give Haiku more choice
             tgt_meta = tier_info.get(r["target_url"], {})
             candidates.append({
                 "target_url": r["target_url"],
