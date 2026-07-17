@@ -46,7 +46,7 @@ except ImportError:
     print("ERROR: `anthropic` package not installed. Run: pip install anthropic")
     sys.exit(1)
 
-MODEL = "claude-haiku-4-5-20251001"
+MODEL = "claude-sonnet-4-6"
 MAX_BODY_CHARS_PER_PARA = 800  # trim long paragraphs to keep prompt reasonable
 MAX_PARAGRAPHS = 25            # ignore body past this — usually not worth linking to
 
@@ -205,7 +205,7 @@ OUTPUT — return ONLY this JSON, no other text:
 def call_haiku(client, prompt):
     resp = client.messages.create(
         model=MODEL,
-        max_tokens=2500,
+        max_tokens=4000,   # Sonnet writes longer structured JSON
         messages=[{"role": "user", "content": prompt}],
     )
     text = resp.content[0].text.strip()
