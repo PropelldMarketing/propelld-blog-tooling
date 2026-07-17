@@ -133,11 +133,22 @@ CONSTRAINTS
   - Never invent an original_sentence — it must appear VERBATIM in the paragraph text above.
   - Anchor text: 3-8 words, describes the target, natural in the sentence.
   - Never use "click here", "read more", "learn more", "this article" as anchors.
-  - PUNCTUATION: match the tone of the original sentence. Do NOT introduce em
-    dashes (— or --) unless the original sentence already uses them. Prefer
-    commas, colons, "such as", "including", "like", parenthetical (...) instead.
+  - PUNCTUATION: NEVER use em dashes (— or --) in your new_sentence, even if
+    the original uses them. Prefer commas, colons, "such as", "including",
+    "like", parenthetical (...), or splitting into two sentences.
   - The rewrite should feel like a light edit, not a restructure. Preserve the
     original sentence's voice and rhythm.
+  - AVOID META-CONTENT PARAGRAPHS. Never insert a link into a sentence that
+    describes what THIS blog post will cover, e.g., paragraphs containing:
+      - "In this blog", "In this guide", "In this article"
+      - "You'll learn", "You'll discover", "You'll read about"
+      - "This guide explains", "This post covers", "we'll cover"
+      - "By the end of this blog"
+      - Bullet-list-intro phrases like "Here's a breakdown of:", "Here are:"
+    These are meta-content signposts where an inline link creates a false
+    signal that the linked topic is one of the blog's subjects. Skip these
+    paragraphs entirely — pick a body paragraph that discusses a specific
+    fact or comparison.
   - Prefer relevance over quantity — 3 great insertions beat 5 mediocre ones.
 
 CRITICAL FAILURE MODES — READ CAREFULLY
@@ -206,9 +217,29 @@ def call_haiku(client, prompt):
     return json.loads(text[start:end + 1])
 
 
+def _strip_em_dashes(text):
+    """Replace em dashes with a comma, unless the original used them.
+    Haiku sometimes ignores the prompt constraint — this belt-and-suspenders
+    ensures em dashes never reach the executor."""
+    if not text:
+        return text
+    # Replace em dash + optional space with ", "
+    import re as _re
+    text = _re.sub(r'\s*[—]+\s*', ", ", text)
+    # Also handle double-hyphen (--) as em dash surrogate
+    text = _re.sub(r'\s*--\s*', ", ", text)
+    return text
+
+
 def validate_insertion(decision, paragraphs):
     """Verify the LLM's decision is applyable — original_sentence must actually
     exist in the specified paragraph."""
+    # Post-process: strip em dashes from new_sentence unless original had them
+    if decision.get("action") == "insert":
+        orig = str(decision.get("original_sentence", ""))
+        new = str(decision.get("new_sentence", ""))
+        if "—" not in orig and "--" not in orig:
+            decision["new_sentence"] = _strip_em_dashes(new)
     if decision.get("action") != "insert":
         return None  # skips are fine
     para_idx = decision.get("paragraph_idx")
