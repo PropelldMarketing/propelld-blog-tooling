@@ -88,6 +88,91 @@ def extract_paragraphs(html, max_chars=MAX_BODY_CHARS_PER_PARA, max_paras=MAX_PA
     return out
 
 
+
+
+# ---- Relevance-based candidate selection (added 20-Jul) ----
+STOPWORDS = {
+    "the", "a", "an", "and", "or", "of", "for", "to", "in", "on", "at", "by",
+    "with", "from", "is", "are", "your", "our", "this", "that", "how", "what",
+    "why", "which", "vs", "and", "guide", "best", "top",
+}
+
+
+def _tokenize(text):
+    """Lowercase, split on non-word, remove stopwords, keep tokens ≥3 chars."""
+    if not text:
+        return set()
+    import re as _re
+    tokens = _re.findall(r"[a-z0-9]+", str(text).lower())
+    return {t for t in tokens if len(t) >= 3 and t not in STOPWORDS}
+
+
+def _slug_tokens(url):
+    """Extract meaningful tokens from a URL slug."""
+    if not url:
+        return set()
+    slug = url.rstrip("/").split("/")[-1]
+    return _tokenize(slug.replace("-", " "))
+
+
+def _tier_weight(tier):
+    """Higher = better. T0/T1P/T1 get boosts as authority destinations."""
+    return {"T0": 1.5, "T1P": 1.4, "T1": 1.3, "T2": 1.1, "T3": 1.0, "T4": 0.9}.get(tier, 0.9)
+
+
+def compute_candidates_by_relevance(source_url, source_title, source_category,
+                                    tier_info, t0_pages, limit=15):
+    """
+    Rank all tier-map posts + T0 pages by relevance to source, return top N.
+    Relevance = weighted keyword overlap (title + slug tokens) × tier weight.
+    """
+    src_tokens = _tokenize(source_title) | _slug_tokens(source_url)
+    if not src_tokens:
+        return []
+
+    candidates = []
+    for tgt_url, meta in tier_info.items():
+        if tgt_url == source_url.rstrip("/"):
+            continue
+        tgt_title = meta.get("title", "")
+        tgt_tokens = _tokenize(tgt_title) | _slug_tokens(tgt_url)
+        overlap = len(src_tokens & tgt_tokens)
+        if overlap == 0:
+            continue
+        # Jaccard-ish but favors overlap size
+        jaccard = overlap / max(len(src_tokens | tgt_tokens), 1)
+        score = jaccard * _tier_weight(meta.get("tier", "T4"))
+        # Boost same-category
+        if source_category and meta.get("category") == source_category:
+            score *= 1.3
+        candidates.append({
+            "target_url": tgt_url,
+            "target_title": tgt_title,
+            "target_category": meta.get("category", "?"),
+            "target_tier": meta.get("tier", "?"),
+            "suggested_anchor": tgt_title[:60] if tgt_title else tgt_url.rsplit("/",1)[-1].replace("-"," "),
+            "relevance_score": round(score, 3),
+        })
+
+    # Always include T0 money pages as candidates (they can always be a good CTA target)
+    for t0_url in t0_pages:
+        if t0_url.rstrip("/") == source_url.rstrip("/"):
+            continue
+        if any(c["target_url"] == t0_url for c in candidates):
+            continue
+        candidates.append({
+            "target_url": t0_url,
+            "target_title": t0_url.rsplit("/", 1)[-1].replace("-", " ").title(),
+            "target_category": "Money Page",
+            "target_tier": "T0",
+            "suggested_anchor": "education loan options",
+            "relevance_score": 0.5,  # baseline T0 always considered
+        })
+
+    candidates.sort(key=lambda c: c["relevance_score"], reverse=True)
+    return candidates[:limit]
+
+
 def build_prompt(source_url, source_title, source_category, paragraphs, candidates):
     """Build the Haiku prompt for one source post."""
     para_block = "\n".join(f"[P{p['idx']}] {p['text']}" for p in paragraphs)
@@ -370,17 +455,19 @@ def main():
             plans.append({"source_url": source_url, "status": "body-too-short"})
             continue
 
-        # Build candidates (top 5 recs for this source)
-        candidates = []
-        for _, r in source_recs.head(10).iterrows():  # top 10 candidates per source
-            tgt_meta = tier_info.get(r["target_url"], {})
-            candidates.append({
-                "target_url": r["target_url"],
-                "target_title": tgt_meta.get("title", r["target_url"].rsplit("/", 1)[-1].replace("-", " ")),
-                "target_category": r.get("target_category", tgt_meta.get("category", "?")),
-                "target_tier": r.get("target_tier", "?"),
-                "suggested_anchor": r.get("refined_anchor") or r.get("anchor_text", ""),
-            })
+        # Build candidates by RELEVANCE to source (not just category-tier order).
+        # This gives Sonnet source-specific candidates instead of generic pillars.
+        t0_pages_list = []
+        try:
+            import json as _json
+            _grammar_p = Path(__file__).parent.parent / "data" / "category_grammar_rules.json"
+            if _grammar_p.exists():
+                t0_pages_list = _json.load(open(_grammar_p)).get("t0_money_pages", [])
+        except Exception:
+            pass
+        candidates = compute_candidates_by_relevance(
+            source_url, source_title, source_category, tier_info, t0_pages_list, limit=10
+        )
 
         prompt = build_prompt(source_url, source_title, source_category, paragraphs, candidates)
 
