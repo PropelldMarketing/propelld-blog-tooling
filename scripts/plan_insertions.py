@@ -133,6 +133,33 @@ CONSTRAINTS
   - Never invent an original_sentence — it must appear VERBATIM in the paragraph text above.
   - Anchor text: 3-8 words, describes the target, natural in the sentence.
   - Never use "click here", "read more", "learn more", "this article" as anchors.
+
+  - INSERTION STYLE — STRONGLY PREFER WRAP-AROUND over bridge-append:
+    ✅ WRAP-AROUND (ideal): find an existing keyword/phrase in the sentence that
+       matches the target's topic, and wrap that phrase with the link. Add at
+       most 1-2 words of clarifier if needed.
+       Example:
+         old: "the State Bank of India (SBI) leads the way"
+         new: "the [State Bank of India (SBI) education loan](url) leads the way"
+         added: 14 chars ✓
+    ✅ SHORT BRIDGE (acceptable if wrap doesn't fit): add a short clause like
+       ", such as [X](url)" or "(see [X](url))". Cap at ~40 added characters.
+    ❌ LONG BRIDGE (skip this candidate): "..., similar to how [X](url) works
+       for other engineering exams and shows pathways to alternate colleges."
+       If your insertion adds more than 50 characters to the sentence, either
+       tighten the phrasing or SKIP the candidate. Bloated sentences are worse
+       than no insertion.
+
+  - SUBSTANTIVE vs CATEGORICAL relevance — the linked concept must actually
+    be DISCUSSED in the source paragraph, not just categorically related.
+    ✅ Substantive: paragraph talks about SBI loans → link to SBI loan page
+    ✅ Substantive: paragraph talks about percentile calculations → link to
+       another exam's marks-to-rank calculation
+    ❌ Categorical only: paragraph is about JEE result dates → linking to
+       "VITEEE cutoff scores" because both are "engineering exams" is TOO
+       LOOSE — dates ≠ cutoffs. Skip this candidate.
+    Ask yourself: if a reader clicks this link, does the destination page
+    address the exact concept the sentence is discussing? If no → SKIP.
   - PUNCTUATION: NEVER use em dashes (— or --) in your new_sentence, even if
     the original uses them. Prefer commas, colons, "such as", "including",
     "like", parenthetical (...), or splitting into two sentences.

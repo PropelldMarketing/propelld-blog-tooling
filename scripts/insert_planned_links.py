@@ -80,8 +80,21 @@ def normalize_href(href, source_url):
       - Haiku hallucinations 'https://site/foo' (fake host) → strip to /site/foo
       - 'site/blog/foo' (missing leading slash) → prepend /
       - absolute /site/ paths → unchanged
+      - Sonnet malformations: '/ site/', '// site/', trailing/inner whitespace
     """
+    # First, aggressive whitespace cleanup — remove any spaces INSIDE the URL
+    # (Sonnet occasionally emits '/ site/...' or '//site/...')
     href = href.strip()
+    # Collapse spaces around slashes: '/ site' → '/site', 'site /blog' → 'site/blog'
+    href = re.sub(r'/\s+', '/', href)
+    href = re.sub(r'\s+/', '/', href)
+    # Collapse double slashes (except in 'https://' scheme)
+    if "://" in href:
+        scheme, rest = href.split("://", 1)
+        rest = re.sub(r'/+', '/', rest)
+        href = f"{scheme}://{rest}"
+    else:
+        href = re.sub(r'/+', '/', href)
     # Strip protocol + host if present
     for prefix in ("https://propelld.com", "http://propelld.com",
                    "https://www.propelld.com", "http://www.propelld.com"):
