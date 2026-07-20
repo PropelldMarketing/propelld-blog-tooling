@@ -120,12 +120,23 @@ def _tier_weight(tier):
     return {"T0": 1.5, "T1P": 1.4, "T1": 1.3, "T2": 1.1, "T3": 1.0, "T4": 0.9}.get(tier, 0.9)
 
 
+def _safe_str(v):
+    """Coerce pandas NaN / None / floats to a clean string, never crashes."""
+    if v is None:
+        return ""
+    if isinstance(v, float) and str(v) == "nan":
+        return ""
+    return str(v)
+
+
 def compute_candidates_by_relevance(source_url, source_title, source_category,
                                     tier_info, t0_pages, limit=15):
     """
     Rank all tier-map posts + T0 pages by relevance to source, return top N.
     Relevance = weighted keyword overlap (title + slug tokens) × tier weight.
     """
+    source_title = _safe_str(source_title)
+    source_category = _safe_str(source_category)
     src_tokens = _tokenize(source_title) | _slug_tokens(source_url)
     if not src_tokens:
         return []
@@ -134,23 +145,27 @@ def compute_candidates_by_relevance(source_url, source_title, source_category,
     for tgt_url, meta in tier_info.items():
         if tgt_url == source_url.rstrip("/"):
             continue
-        tgt_title = meta.get("title", "")
+        tgt_title = _safe_str(meta.get("title", ""))
+        tgt_category = _safe_str(meta.get("category", ""))
+        tgt_tier = _safe_str(meta.get("tier", "T4")) or "T4"
         tgt_tokens = _tokenize(tgt_title) | _slug_tokens(tgt_url)
         overlap = len(src_tokens & tgt_tokens)
         if overlap == 0:
             continue
         # Jaccard-ish but favors overlap size
         jaccard = overlap / max(len(src_tokens | tgt_tokens), 1)
-        score = jaccard * _tier_weight(meta.get("tier", "T4"))
+        score = jaccard * _tier_weight(tgt_tier)
         # Boost same-category
-        if source_category and meta.get("category") == source_category:
+        if source_category and tgt_category == source_category:
             score *= 1.3
+        # Slug fallback if title is empty
+        slug_fallback = tgt_url.rsplit("/", 1)[-1].replace("-", " ")
         candidates.append({
             "target_url": tgt_url,
-            "target_title": tgt_title,
-            "target_category": meta.get("category", "?"),
-            "target_tier": meta.get("tier", "?"),
-            "suggested_anchor": tgt_title[:60] if tgt_title else tgt_url.rsplit("/",1)[-1].replace("-"," "),
+            "target_title": tgt_title or slug_fallback,
+            "target_category": tgt_category or "?",
+            "target_tier": tgt_tier,
+            "suggested_anchor": (tgt_title[:60] if tgt_title else slug_fallback[:60]),
             "relevance_score": round(score, 3),
         })
 
