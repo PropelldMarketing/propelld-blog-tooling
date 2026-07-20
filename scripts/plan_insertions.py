@@ -243,29 +243,16 @@ CONSTRAINTS
          new: "the [State Bank of India (SBI) education loan](url) leads the way"
          added: 14 chars ✓
     ✅ SHORT BRIDGE (acceptable if wrap doesn't fit): add a short clause like
-       ", such as [X](url)" or "(see [X](url))". Cap at 40 added characters.
-    ❌ LONG BRIDGE (SKIP THIS CANDIDATE): "..., similar to how [X](url) works
-       for other engineering exams and shows pathways to alternate colleges."
+       ", such as [X](url)" or "(see [X](url))". Aim for +40 chars or less.
+    ❌ LONG BRIDGE: "..., similar to how [X](url) works for other engineering
+       exams and shows pathways to alternate colleges." Prefer wrap or short
+       bridge; the executor will filter insertions that add more than 60 chars.
 
-  - HARD NUMERIC CAP: new_sentence MUST be at most 50 characters longer than
-    original_sentence. This is a strict limit — count the characters before
-    finalising. If you cannot achieve the insertion within +50 chars, return
-    action=skip for that candidate. Do NOT return a longer new_sentence
-    thinking it's "close enough" — it will be filtered by the executor.
-
-  - IMPORTANT — HIGH-RELEVANCE ≠ LONGER BRIDGES:
-    Just because a candidate is topically very close to the source does NOT
-    justify writing a longer explanatory bridge. Highly-relevant candidates
-    should produce SHORTER insertions, not longer ones (because the connection
-    is obvious and doesn't need explaining).
-    ❌ "..., similar to how [target] works for other engineering exams and
-       reflects the same normalisation methodology used across national exams"
-    ✅ "..., similar to [target] calculations"
-    ✅ "the [target keyword wrapped in existing sentence]"
-
-    If you find yourself writing 'similar to how X works for Y in Z contexts',
-    STOP — that's the bloat pattern. Truncate to just 'similar to [X]' or wrap
-    around an existing phrase instead.
+  - HIGH-RELEVANCE candidates should produce SHORTER insertions, not longer.
+    Topical closeness means the connection is obvious and doesn't need
+    explaining. If you find yourself writing 'similar to how X works for
+    Y in Z contexts', truncate to just 'similar to [X]' or wrap around an
+    existing phrase in the sentence.
 
   - SUBSTANTIVE vs CATEGORICAL relevance — the linked concept must actually
     be DISCUSSED in the source paragraph, not just categorically related.
@@ -447,8 +434,30 @@ def main():
     # Group recs by source, cap at 5 candidates
     grouped = list(recs.groupby("source_url"))
     if a.limit > 0:
-        grouped = grouped[:a.limit]
-        print(f"\nProcessing {len(grouped)} sources (limit applied)")
+        # Stratified sample by source_tier so limit gives DIVERSE spread across
+        # tiers, not just first N alphabetically (which biases to top tiers).
+        import random as _random
+        _random.seed(42)  # reproducible
+        by_tier = {}
+        for source_url, source_recs in grouped:
+            tier = str(source_recs["source_tier"].iloc[0]) if "source_tier" in source_recs.columns else "?"
+            by_tier.setdefault(tier, []).append((source_url, source_recs))
+        # Sample proportionally
+        total_sources = sum(len(v) for v in by_tier.values())
+        picked = []
+        for tier, items in by_tier.items():
+            share = max(1, round(a.limit * len(items) / total_sources))
+            _random.shuffle(items)
+            picked.extend(items[:share])
+        # Trim to exact limit
+        _random.shuffle(picked)
+        grouped = picked[:a.limit]
+        # Log the distribution
+        tier_counts = {}
+        for _u, _r in grouped:
+            t = str(_r["source_tier"].iloc[0]) if "source_tier" in _r.columns else "?"
+            tier_counts[t] = tier_counts.get(t, 0) + 1
+        print(f"\nProcessing {len(grouped)} sources (stratified sample by tier): {dict(sorted(tier_counts.items()))}")
     else:
         print(f"\nProcessing {len(grouped)} sources")
 
