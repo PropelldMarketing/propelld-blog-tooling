@@ -47,6 +47,9 @@ if "scripts.bulk_apply_links" in sys.modules:
 from scripts.bulk_apply_links import append_utm_if_t0
 
 HALT_ERROR_RATE = 0.05
+MAX_SENTENCE_DELTA = 60  # Skip insertions that add more than this many characters
+                          # to the original sentence. Prevents bloat. Set via
+                          # --max-delta CLI flag if you want to override.
 MD_LINK_RE = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
 
 
@@ -215,7 +218,7 @@ def apply_insertion_to_paragraph(soup, paragraph_idx, original_sentence, new_sen
     return True, "ok"
 
 
-def process_source(item, plans_for_source, dry_run):
+def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA):
     fd = item.get("fieldData", {})
     slug = fd.get("slug", "")
     source_url = f"/site/blog/{slug}"
@@ -243,6 +246,15 @@ def process_source(item, plans_for_source, dry_run):
         if has_val_err:
             skipped += 1
             errors.append(f"validation: {val_err}")
+            continue
+
+        # Delta filter — skip bloated insertions
+        orig_len = len(str(plan.get("original_sentence", "")))
+        new_len = len(str(plan.get("new_sentence", "")))
+        delta = new_len - orig_len
+        if max_delta > 0 and delta > max_delta:
+            skipped += 1
+            errors.append(f"delta-filter: +{delta} chars > {max_delta} limit")
             continue
 
         # Idempotency: skip if target already in body (raw or UTM'd)
@@ -307,6 +319,10 @@ def main():
     p.add_argument("--skip-snapshot", action="store_true")
     p.add_argument("--apply", action="store_true")
     p.add_argument("--sleep", type=float, default=0.2)
+    p.add_argument("--max-delta", type=int, default=MAX_SENTENCE_DELTA,
+                   help="Skip insertions whose new_sentence adds more than "
+                        f"N chars vs original. Default {MAX_SENTENCE_DELTA}. "
+                        "Use 0 to disable filter.")
     p.add_argument("--output-log", default="out/insert-planned-links-log.csv")
     a = p.parse_args()
 
@@ -360,7 +376,7 @@ def main():
             errors += 1
             continue
         try:
-            log, patch = process_source(item, plans_for_source, dry_run=not a.apply)
+            log, patch = process_source(item, plans_for_source, dry_run=not a.apply, max_delta=a.max_delta)
             if patch and a.apply:
                 client.update_item(COLLECTIONS["blog_posts"], item["id"], patch)
                 log["status"] = "patched"

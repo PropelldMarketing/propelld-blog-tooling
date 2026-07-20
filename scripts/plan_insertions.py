@@ -108,7 +108,7 @@ SOURCE POST
 BODY (paragraphs numbered P0, P1, P2, ...):
 {para_block}
 
-CANDIDATE INTERNAL LINKS (up to 10 for you to choose from — pick 3-5 that fit best):
+CANDIDATE INTERNAL LINKS (up to 15 for you to choose from — pick 4-6 that fit best):
 {cand_block}
 
 Your task: for EACH candidate, decide one of:
@@ -125,9 +125,9 @@ Your task: for EACH candidate, decide one of:
      where inserting it would read naturally.
 
 CONSTRAINTS
-  - TARGET 3-5 insertions per post. Fewer is OK if candidates aren't natural
-    fits, but try to reach at least 3 if the candidates plausibly work.
-  - Insert at most 5 links per post (hard ceiling).
+  - TARGET 4-6 insertions per post. Fewer is OK if candidates aren't natural
+    fits, but try to reach at least 4 if the candidates plausibly work.
+  - Insert at most 6 links per post (hard ceiling).
   - No 2 insertions in the same paragraph (distribute them across the body).
   - Never insert into the very first or very last paragraph (intro/CTA area).
   - Never invent an original_sentence — it must appear VERBATIM in the paragraph text above.
@@ -176,7 +176,7 @@ CONSTRAINTS
     signal that the linked topic is one of the blog's subjects. Skip these
     paragraphs entirely — pick a body paragraph that discusses a specific
     fact or comparison.
-  - Prefer relevance over quantity — 3 great insertions beat 5 mediocre ones.
+  - Prefer relevance over quantity — 4 great insertions beat 6 mediocre ones.
 
 CRITICAL FAILURE MODES — READ CAREFULLY
 
@@ -372,7 +372,7 @@ def main():
 
         # Build candidates (top 5 recs for this source)
         candidates = []
-        for _, r in source_recs.head(10).iterrows():  # widened from 5 to give Haiku more choice
+        for _, r in source_recs.head(15).iterrows():  # widened to 15 to help Sonnet find fits when top picks don't work
             tgt_meta = tier_info.get(r["target_url"], {})
             candidates.append({
                 "target_url": r["target_url"],
