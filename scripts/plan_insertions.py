@@ -243,12 +243,29 @@ CONSTRAINTS
          new: "the [State Bank of India (SBI) education loan](url) leads the way"
          added: 14 chars ✓
     ✅ SHORT BRIDGE (acceptable if wrap doesn't fit): add a short clause like
-       ", such as [X](url)" or "(see [X](url))". Cap at ~40 added characters.
-    ❌ LONG BRIDGE (skip this candidate): "..., similar to how [X](url) works
+       ", such as [X](url)" or "(see [X](url))". Cap at 40 added characters.
+    ❌ LONG BRIDGE (SKIP THIS CANDIDATE): "..., similar to how [X](url) works
        for other engineering exams and shows pathways to alternate colleges."
-       If your insertion adds more than 50 characters to the sentence, either
-       tighten the phrasing or SKIP the candidate. Bloated sentences are worse
-       than no insertion.
+
+  - HARD NUMERIC CAP: new_sentence MUST be at most 50 characters longer than
+    original_sentence. This is a strict limit — count the characters before
+    finalising. If you cannot achieve the insertion within +50 chars, return
+    action=skip for that candidate. Do NOT return a longer new_sentence
+    thinking it's "close enough" — it will be filtered by the executor.
+
+  - IMPORTANT — HIGH-RELEVANCE ≠ LONGER BRIDGES:
+    Just because a candidate is topically very close to the source does NOT
+    justify writing a longer explanatory bridge. Highly-relevant candidates
+    should produce SHORTER insertions, not longer ones (because the connection
+    is obvious and doesn't need explaining).
+    ❌ "..., similar to how [target] works for other engineering exams and
+       reflects the same normalisation methodology used across national exams"
+    ✅ "..., similar to [target] calculations"
+    ✅ "the [target keyword wrapped in existing sentence]"
+
+    If you find yourself writing 'similar to how X works for Y in Z contexts',
+    STOP — that's the bloat pattern. Truncate to just 'similar to [X]' or wrap
+    around an existing phrase instead.
 
   - SUBSTANTIVE vs CATEGORICAL relevance — the linked concept must actually
     be DISCUSSED in the source paragraph, not just categorically related.
