@@ -340,12 +340,24 @@ def call_haiku(client, prompt):
         messages=[{"role": "user", "content": prompt}],
     )
     text = resp.content[0].text.strip()
-    # Extract JSON
+    # Extract JSON: use raw_decode so trailing content (a stray period,
+    # a "```" fence, an apologetic note) after the JSON object doesn't
+    # break parsing. Previous impl used text.rfind("}") which broke when
+    # Sonnet appended commentary containing a "}".
     start = text.find("{")
-    end = text.rfind("}")
-    if start == -1 or end == -1:
+    if start == -1:
         raise ValueError(f"No JSON in response: {text[:300]}")
-    return json.loads(text[start:end + 1])
+    decoder = json.JSONDecoder()
+    try:
+        obj, _idx = decoder.raw_decode(text[start:])
+    except json.JSONDecodeError as e:
+        # Fall back: try old find-last-brace path so we don't regress on
+        # rare responses that pack multiple objects.
+        end = text.rfind("}")
+        if end == -1 or end <= start:
+            raise ValueError(f"JSON parse failed ({e}): {text[start:start+300]}")
+        obj = json.loads(text[start:end + 1])
+    return obj
 
 
 def _strip_em_dashes(text):
