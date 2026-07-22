@@ -130,6 +130,21 @@ def normalize_href(href, source_url):
 HTML_LINK_RE = re.compile(r'<a\s+href="([^"]+)"[^>]*>([^<]+)</a>', re.IGNORECASE)
 
 
+VISIBLE_MD_LINK = re.compile(r'\[([^\]]+)\]\([^)]+\)')
+VISIBLE_HTML_LINK = re.compile(r'<a\s+[^>]*>([^<]*)</a>', re.IGNORECASE | re.DOTALL)
+
+
+def visible_text_len(s):
+    """Return length of sentence with markdown/HTML link markup stripped, so the
+    delta filter measures reader-visible growth rather than URL noise. A long
+    URL like /site/blog/eligibility-criteria-for-study-abroad-education-loan
+    adds ~60 chars of markup even when the sentence visually only grows by 20."""
+    s = str(s or "")
+    s = VISIBLE_MD_LINK.sub(r'\1', s)     # [anchor](url) -> anchor
+    s = VISIBLE_HTML_LINK.sub(r'\1', s)   # <a ...>anchor</a> -> anchor
+    return len(s)
+
+
 def md_link_to_html(new_sentence, source_url, preview_marker=False):
     """Convert links in new_sentence to normalized HTML <a> tags.
 
@@ -248,13 +263,16 @@ def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA
             errors.append(f"validation: {val_err}")
             continue
 
-        # Delta filter — skip bloated insertions
+        # Delta filter — measure VISIBLE-text growth (stripping link markup),
+        # not raw byte growth. Long URLs add ~50-70 chars of markdown/HTML noise
+        # even when the reader-visible sentence only grows by 20 chars.
+        # Raw filter was falsely rejecting ~30% of otherwise-clean insertions.
         orig_len = len(str(plan.get("original_sentence", "")))
-        new_len = len(str(plan.get("new_sentence", "")))
-        delta = new_len - orig_len
+        new_visible = visible_text_len(plan.get("new_sentence", ""))
+        delta = new_visible - orig_len
         if max_delta > 0 and delta > max_delta:
             skipped += 1
-            errors.append(f"delta-filter: +{delta} chars > {max_delta} limit")
+            errors.append(f"delta-filter: +{delta} visible chars > {max_delta} limit")
             continue
 
         # Idempotency: skip if target already in body (raw or UTM'd)
