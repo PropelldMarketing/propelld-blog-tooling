@@ -134,12 +134,13 @@ def test_one_insertion_per_paragraph():
 
 
 def test_anchor_repetition_cap():
+    # v6.1: the per-run variety cap (5) binds before the catalogue cap (25)
     grammar = {"tier_inbound_targets": {"T2": {"target_max": 10000}}}
     wraps = [_edge(f"/site/blog/s{i}", "/site/blog/t", pidx=1, anchor="same anchor")
              for i in range(30)]
     w, b, alloc = allocate(wraps, [], grammar, T0)
-    from scripts.plan_insertions import ANCHOR_REPEAT_CAP
-    assert len(w) == min(ANCHOR_REPEAT_CAP, 10000, 30) == ANCHOR_REPEAT_CAP
+    from scripts.plan_insertions import ANCHOR_RUN_CAP
+    assert len(w) == ANCHOR_RUN_CAP
 
 
 def test_edge_legality():
@@ -170,13 +171,43 @@ def test_validate_bridge_decision_end_to_end():
     d = {"action": "insert", "target_url": "/site/blog/collateral-guide",
          "paragraph_label": 2,
          "original_sentence": "Banks evaluate collateral before sanctioning amounts.",
-         "new_sentence": "Banks evaluate [collateral requirements](/site/blog/collateral-guide) before sanctioning amounts.",
-         "anchor": "collateral requirements"}
+         "new_sentence": "Banks evaluate [collateral](/site/blog/collateral-guide) before sanctioning amounts.",
+         "anchor": "collateral requirements guide"}
+    # anchor field wording is free; the sentence edit must be a pure wrap
+    d["anchor"] = "collateral"
     ok, why, d = validate_bridge_decision(d, para_by_label,
                                           {"/site/blog/collateral-guide"}, alloc,
                                           "/site/blog/src")
+    assert not ok  # 1-word anchor rejected (2-8 words rule)
+    d2 = {"action": "insert", "target_url": "/site/blog/collateral-guide",
+          "paragraph_label": 2,
+          "original_sentence": "Banks evaluate collateral before sanctioning amounts.",
+          "new_sentence": "Banks evaluate [collateral before sanctioning](/site/blog/collateral-guide) amounts.",
+          "anchor": "collateral before sanctioning"}
+    ok, why, d2 = validate_bridge_decision(d2, para_by_label,
+                                           {"/site/blog/collateral-guide"}, alloc,
+                                           "/site/blog/src")
     assert ok, why
-    assert d["_field"] == "post-body" and d["_pidx"] == 2
+    assert d2["_field"] == "post-body" and d2["_pidx"] == 2
+
+
+def test_clarifier_glue_now_rejected_by_design():
+    """v6.1 policy decision: extending an existing word into a longer phrase
+    ('collateral' → 'collateral requirements') is rejected even when benign,
+    because the same mechanism produced 'BDS' → 'BDS rank predictor' (a
+    course silently became a tool). Wraps + boundary insertions only."""
+    recs = extract_paragraph_records(_bodies())
+    para_by_label = {r["label"]: r for r in recs}
+    alloc = Allocator({}, T0)
+    d = {"action": "insert", "target_url": "/site/blog/collateral-guide",
+         "paragraph_label": 2,
+         "original_sentence": "Banks evaluate collateral before sanctioning amounts.",
+         "new_sentence": "Banks evaluate [collateral requirements](/site/blog/collateral-guide) before sanctioning amounts.",
+         "anchor": "collateral requirements"}
+    ok, why, _ = validate_bridge_decision(d, para_by_label,
+                                          {"/site/blog/collateral-guide"}, alloc,
+                                          "/site/blog/src")
+    assert not ok and "boundary" in why
 
 
 def test_validate_rejects_scaffold_and_wrong_target():
@@ -275,3 +306,89 @@ def test_executor_t0_cap_at_apply_time():
     # post already carries 2 T0 links → third must be refused
     assert log["applied"] == 0
     assert any("t0-cta-cap" in e for e in [log.get("errors_notes", "")])
+
+
+# ================= v6.1 guards (built from the 23-Jul test run defects) =================
+
+from scripts.plan_insertions import (
+    _is_full_sentence, _insertion_boundary_ok, ANCHOR_RUN_CAP,
+)
+
+
+def test_fragment_sentences_rejected():
+    assert not _is_full_sentence("education loan sanction letter")
+    assert not _is_full_sentence("JEE Main 2026 Session 1 Result")
+    assert not _is_full_sentence("Private Banks and NBFCs")
+    assert _is_full_sentence("Banks evaluate collateral before sanctioning loan amounts.")
+
+
+def test_bds_style_item_extension_rejected():
+    orig = "You can usually select your preferred course, such as MBBS, BDS, or even allied options."
+    bad = "You can usually select your preferred course, such as MBBS, BDS rank predictor, or even allied options."
+    ok, why = _insertion_boundary_ok(orig, bad)
+    assert not ok and "boundary" in why
+
+
+def test_comma_boundary_insertion_accepted():
+    orig = "Options like finance, marketing, and analytics each offer unique paths."
+    good = "Options like finance, marketing, MBA in HR management, and analytics each offer unique paths."
+    ok, why = _insertion_boundary_ok(orig, good)
+    assert ok, why
+
+
+def test_parenthetical_insertion_accepted_and_rewrite_rejected():
+    orig = "Reputed colleges accepting the MAT exam result include TAPMI and XIME."
+    good = "Reputed colleges accepting the MAT exam result (and the CMAT exam result) include TAPMI and XIME."
+    ok, why = _insertion_boundary_ok(orig, good)
+    assert ok, why
+    reword = "Reputed institutes accepting the MAT exam result include TAPMI and XIME."
+    ok, why = _insertion_boundary_ok(orig, reword)
+    assert not ok
+
+
+def test_wrap_is_pure_insertion_noop():
+    s = "The CAT exam pattern changed in 2025 and percentile math matters."
+    ok, why = _insertion_boundary_ok(s, s)
+    assert ok
+
+
+def test_t0_wraps_use_library_variants_only():
+    # slug-derived "Education Loan" phrase must NOT be scanned for T0 pages
+    phs = phrase_candidates("/site/education-loan", "Education Loan",
+                            {"/site/education-loan": ["education loan in India"]})
+    assert phs == ["education loan in India"]
+    # blog targets still get title + slug phrases (years stripped)
+    phs = phrase_candidates("/site/blog/bds-rank-predictor-2025",
+                            "BDS Rank Predictor 2025: Check Now", {})
+    assert any("bds rank predictor" == p.lower().strip() for p in phs)
+
+
+def test_brand_adjacent_t0_wrap_blocked():
+    bodies = {"post-body":
+              "<p>Intro paragraph provides context for readers here today fine.</p>"
+              "<p>Understanding the Canara Bank education loan in India repayment process is essential for students.</p>"
+              "<p>Generic paragraph about an education loan in India being useful for many students today.</p>"
+              "<p>Outro paragraph wraps the whole article up nicely here.</p>"}
+    soups = {f: BeautifulSoup(h, "html.parser") for f, h in bodies.items()}
+    recs = extract_paragraph_records(bodies)
+    row = find_wrap(soups, recs, "/site/education-loan",
+                    ["education loan in India"], is_t0=True)
+    assert row is not None
+    # must have skipped the Canara paragraph (P1) and landed on P2
+    assert "Canara" not in row["original_sentence"]
+
+
+def test_anchor_run_cap_forces_variety():
+    grammar = {"tier_inbound_targets": {"T2": {"target_max": 10000}}}
+    wraps = [_edge(f"/site/blog/s{i}", "/site/blog/t", pidx=1, anchor="education loan")
+             for i in range(12)]
+    w, b, alloc = allocate(wraps, [], grammar, T0)
+    assert len(w) == ANCHOR_RUN_CAP == 5
+
+
+def test_new_scaffolds_as_with_see_also():
+    orig = "Candidates must understand the exam pattern to prepare well."
+    bad = "Candidates must understand the exam pattern (as with the MAT exam pattern) to prepare well."
+    assert scaffold_introduced(orig, bad) == "as with"
+    bad2 = "Candidates must understand the exam pattern (see also MAT pattern) to prepare well."
+    assert scaffold_introduced(orig, bad2) == "see also"

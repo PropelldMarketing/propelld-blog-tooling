@@ -104,8 +104,65 @@ SCAFFOLD_PHRASES = [
     "similar to", "much like", "just like", "akin to", "also see",
     "for more", "learn more", "check out", "explore", "such as the",
     "including the", "see our", "refer to", "don't forget to",
-    "be sure to", "you can also",
+    "be sure to", "you can also", "as with", "see also",
 ]
+
+# Sentences shorter than this (or without terminal punctuation) are usually
+# headings, table captions or CTA fragments — never link inside those.
+MIN_SENTENCE_LEN = 40
+
+# T0 wrap guard: never wrap a generic money-page phrase when a competitor
+# brand sits just before it ("Canara Bank [education loan]" would mislead
+# the reader into expecting Canara info, not the Propelld product page).
+BRAND_TOKENS = ["sbi", "canara", "hdfc", "axis", "icici", "pnb", "idbi",
+                "kotak", "bank of baroda", "bank of india", "union bank",
+                "central bank", "indian bank", "federal bank", "yes bank",
+                "avanse", "incred", "auxilo", "credila"]
+
+# Per-run cap on identical (target, anchor) pairs — forces variant rotation
+# well before the catalogue-wide ANCHOR_REPEAT_CAP kicks in. v6 test showed
+# 10x "education loan" → /site/education-loan in just 50 posts.
+ANCHOR_RUN_CAP = 5
+
+
+def _is_full_sentence(s):
+    s = str(s).strip()
+    return len(s) >= MIN_SENTENCE_LEN and bool(re.search(r"[.!?]$", s))
+
+
+def _insertion_boundary_ok(orig, new_visible):
+    """The edit must be a SINGLE pure insertion at a natural boundary
+    (or no visible change at all, i.e. a wrap). Catches the 'BDS' →
+    'BDS rank predictor' class of error where an existing list item gets
+    silently extended into a different thing, and rejects rewrites.
+    Returns (ok, why)."""
+    o = re.sub(r"\s+", " ", str(orig)).strip()
+    n = re.sub(r"\s+", " ", str(new_visible)).strip()
+    if o == n:
+        return True, ""
+    if len(n) < len(o):
+        return False, "edit shortened/reworded the sentence (must be pure insertion)"
+    i = 0
+    while i < len(o) and i < len(n) and o[i] == n[i]:
+        i += 1
+    j = 0
+    while (j < len(o) - i and j < len(n) - i
+           and o[len(o) - 1 - j] == n[len(n) - 1 - j]):
+        j += 1
+    remainder = o[i:len(o) - j]
+    inserted = n[i:len(n) - j]
+    if remainder:
+        return False, "edit is a substitution/rewrite, not a pure insertion"
+    before = o[:i].rstrip()
+    span = inserted.strip()
+    boundary_before = (not before) or before[-1] in ",;:("
+    connector_start = (inserted[:1] in ",;:(" or span[:1] in ",;:(" or
+                       span.lower().startswith(("and ", "or ", "with ", "(")))
+    if boundary_before or connector_start:
+        return True, ""
+    return False, ("insertion glued onto an existing word/phrase without a "
+                   "punctuation or connector boundary (list-item extension risk)")
+
 
 STOPWORDS = {
     "the", "a", "an", "and", "or", "of", "for", "to", "in", "on", "at", "by",
@@ -314,12 +371,23 @@ def edge_allowed(src_tier, tgt_tier, src_cat, tgt_cat):
 
 def phrase_candidates(target_url, target_title, anchor_lib):
     """Phrases worth scanning for, per target: library variants first
-    (they're hand-curated), then the cleaned title."""
-    phrases = list(anchor_lib.get(normalize_url(target_url), []))
-    title = re.sub(r"\s*[\(\[].*?[\)\]]", "", str(target_title or "")).strip()
-    title = re.sub(r"\s*[:|—-]\s*\d{4}.*$", "", title).strip()
-    if title:
-        phrases.append(title)
+    (hand-curated). Blog targets also get their cleaned title and a
+    slug-derived phrase. T0 money pages get LIBRARY VARIANTS ONLY — the
+    slug-derived title ("Education Loan") matches everywhere and produced
+    10 identical generic wraps in the v6 test."""
+    tgt = normalize_url(target_url)
+    phrases = list(anchor_lib.get(tgt, []))
+    is_blog = tgt.startswith("/site/blog/")
+    if is_blog:
+        title = re.sub(r"\s*[\(\[].*?[\)\]]", "", str(target_title or "")).strip()
+        title = re.sub(r"\s*[:|—-]\s*\d{4}.*$", "", title).strip()
+        if title:
+            phrases.append(title)
+        slug_phrase = tgt.rsplit("/", 1)[-1].replace("-", " ")
+        slug_phrase = re.sub(r"\b(19|20)\d{2}\b", "", slug_phrase).strip()
+        slug_phrase = re.sub(r"\s+", " ", slug_phrase)
+        if slug_phrase:
+            phrases.append(slug_phrase)
     seen, out = set(), []
     for ph in phrases:
         w = ph.split()
@@ -337,7 +405,7 @@ def _phrase_regex(phrase):
     return re.compile(r"\b" + r"\s+".join(parts) + r"\b", re.IGNORECASE)
 
 
-def find_wrap(field_soups, para_records, target_url, phrases):
+def find_wrap(field_soups, para_records, target_url, phrases, is_t0=False):
     """First eligible wrap for this target. Scans text NODES (never inside
     existing <a>), so the executor's single-node splice is guaranteed to
     apply. Returns a plan-row dict or None."""
@@ -366,8 +434,8 @@ def find_wrap(field_soups, para_records, target_url, phrases):
                             s_off = start
                             break
                         start = end + 1  # split consumed 1+ ws chars; approx
-                    if sentence is None or len(sentence.strip()) < 25:
-                        continue
+                    if sentence is None or not _is_full_sentence(sentence):
+                        continue  # headings/captions/fragments: never link
                     sent = sentence.strip()
                     lead = len(sentence) - len(sentence.lstrip())
                     ms = m.start() - s_off - lead
@@ -375,6 +443,10 @@ def find_wrap(field_soups, para_records, target_url, phrases):
                     if ms < 0 or me > len(sent):
                         continue
                     matched = sent[ms:me]
+                    if is_t0:
+                        pre = sent[max(0, ms - 35):ms].lower()
+                        if any(b in pre for b in BRAND_TOKENS):
+                            continue  # "Canara Bank [education loan]" mislead
                     new_sent = sent[:ms] + f"[{matched}]({target_url})" + sent[me:]
                     return {"field": field, "paragraph_idx": pidx,
                             "original_sentence": sent, "new_sentence": new_sent,
@@ -413,7 +485,8 @@ class Allocator:
             if (s, edge["field"], edge["paragraph_idx"]) in self.used_paras:
                 return False
         if anchor:
-            if self.anchor_counts.get((t, anchor.lower()), 0) >= ANCHOR_REPEAT_CAP:
+            cap = min(ANCHOR_RUN_CAP, ANCHOR_REPEAT_CAP)
+            if self.anchor_counts.get((t, anchor.lower()), 0) >= cap:
                 return False
         return True
 
@@ -494,6 +567,8 @@ RULES — every one is enforced by code after you answer:
 6. Anchor text 2-8 words, descriptive of the target. Never "click here"/"read more"/generic verbs.
 7. No em dashes (— or --). Max one insertion per paragraph. Never two targets in the same paragraph.
 8. The target's concept must actually be discussed in the sentence's paragraph. If it's only category-adjacent, skip.
+9. Your edit must be a PURE INSERTION: the original sentence's words all stay, in order, unchanged. Never reword or shorten. Never extend an existing word into a longer phrase ("collateral" → "collateral requirements" is FORBIDDEN, even when it reads fine — wrap the existing words as-is instead). Any added text must sit at a punctuation boundary: after a comma, inside (parentheses), or after a colon. In a list ("such as MBBS, BDS, or..."), either wrap an existing item or add a NEW item of the SAME kind between commas — never turn "BDS" into "BDS rank predictor".
+10. Only pick sentences of normal prose length (40+ characters ending in a period). Never headings, table captions, or button/CTA fragments.
 
 Return ONLY JSON:
 {{
@@ -561,6 +636,9 @@ def validate_bridge_decision(d, para_by_label, allowed_targets, alloc, source_ur
     new = str(d.get("new_sentence", ""))
     if not orig:
         return False, "empty original_sentence", d
+    if not _is_full_sentence(orig):
+        return False, ("original_sentence is a heading/fragment "
+                       "(too short or no terminal punctuation), pick a prose sentence"), d
     orig_norm = re.sub(r"\s+", " ", orig).strip()
     para_norm = re.sub(r"\s+", " ", rec["text"]).strip()
     if orig_norm not in para_norm:
@@ -582,10 +660,14 @@ def validate_bridge_decision(d, para_by_label, allowed_targets, alloc, source_ur
     ph = scaffold_introduced(orig, new)
     if ph:
         return False, f"introduces forbidden connector phrase '{ph}'", d
+    new_visible = MD_LINK_RE.sub(r"\1", new)
+    b_ok, b_why = _insertion_boundary_ok(orig, new_visible)
+    if not b_ok:
+        return False, b_why, d
     if (source_url, rec["field"], rec["pidx"]) in alloc.used_paras:
         return False, f"paragraph P{label} already used in this post", d
-    if alloc.anchor_counts.get((tgt, anchor.lower()), 0) >= ANCHOR_REPEAT_CAP:
-        return False, f"anchor '{anchor}' hit global repetition cap", d
+    if alloc.anchor_counts.get((tgt, anchor.lower()), 0) >= min(ANCHOR_RUN_CAP, ANCHOR_REPEAT_CAP):
+        return False, f"anchor '{anchor}' hit repetition cap, vary the wording", d
     d["anchor"] = anchor
     d["_field"] = rec["field"]
     d["_pidx"] = rec["pidx"]
@@ -692,7 +774,8 @@ def main():
                     "target_tier": c["target_tier"], "relevance": c["relevance"]}
             wrap = find_wrap(field_soups, para_records, c["target_url"],
                              phrase_candidates(c["target_url"],
-                                               c["target_title"], anchor_lib))
+                                               c["target_title"], anchor_lib),
+                             is_t0=(c["target_tier"] == "T0"))
             if wrap:
                 wrap_edges.append({**base, **wrap})
             else:
@@ -781,6 +864,13 @@ def main():
                                              str(d.get("original_sentence", ""))[:200],
                                          "new_sentence":
                                              str(d.get("new_sentence", ""))[:200]})
+                    else:
+                        plans.append({"source_url": su, "source_slug": ctx["slug"],
+                                      "target_url": tgt, "action": "skip",
+                                      "insertion_type": "bridge",
+                                      "reasoning": str(d.get("reasoning", ""))[:200],
+                                      "validation_error": "",
+                                      "status": "llm-skipped"})
 
             try:
                 prompt = build_bridge_prompt(su, ctx["meta"].get("title", ""),
@@ -797,10 +887,20 @@ def main():
             except Exception as e:
                 plans.append({"source_url": su,
                               "status": f"error: {str(e)[:200]}"})
-            # release unfilled bridge slots
+            # release unfilled bridge slots; log dropped edges for observability
             for e in targets:
                 if e["target_url"] not in settled:
                     alloc.release(e)
+                    already = any(pl.get("source_url") == su and
+                                  pl.get("target_url") == e["target_url"]
+                                  for pl in plans)
+                    if not already:
+                        plans.append({"source_url": su, "source_slug": ctx["slug"],
+                                      "target_url": e["target_url"],
+                                      "action": "skip", "insertion_type": "bridge",
+                                      "reasoning": "",
+                                      "validation_error": "dropped: failed validation after retry or no decision returned",
+                                      "status": "dropped"})
             if (i + 1) % 10 == 0:
                 print(f"  [{i+1}/{len(by_source)}] bridge calls done")
             time.sleep(a.sleep)
@@ -824,6 +924,12 @@ def main():
         print(per_post.value_counts().sort_index().to_string())
         print("Top 10 targets:")
         print(ins["target_url"].value_counts().head(10).to_string())
+        if "status" in df.columns:
+            n_llm_skip = int((df["status"] == "llm-skipped").sum())
+            n_dropped = int((df["status"] == "dropped").sum())
+            print(f"Bridge funnel: {len(chosen_bridges)} allocated → "
+                  f"{int((ins['insertion_type'] == 'bridge').sum())} written | "
+                  f"{n_llm_skip} model-skipped | {n_dropped} dropped by validator")
         scaf = sum(1 for _, r in ins.iterrows()
                    if scaffold_introduced(r["original_sentence"], r["new_sentence"]))
         print(f"Insertions introducing scaffold phrases: {scaf} (must be 0)")
