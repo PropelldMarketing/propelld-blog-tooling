@@ -1,5 +1,5 @@
 {
-  "_description": "Per-category linking grammar. Encodes the rules from internal-linking-strategy-v3.docx \u00a75.",
+  "_description": "Per-category linking grammar. Encodes the rules from internal-linking-strategy-v3.docx §5.",
   "conversion_proximity_map": {
     "Education Loans": 80,
     "Finance & Credit Education": 70,
@@ -226,5 +226,8 @@
       "financing": 12,
       "funding": 8
     }
-  }
+  },
+  "utm_cta_pages": [
+    "/site/lp/study-loan-eligibility"
+  ]
 }

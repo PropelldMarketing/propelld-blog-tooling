@@ -50,16 +50,37 @@ def _load_t0_pages():
     return _T0_PAGES
 
 
+_UTM_CTA_PAGES = None
+
+def _load_utm_cta_pages():
+    """Pages that receive UTM-tagged CTA links (policy Jul-2026: LP landing
+    pages ONLY, listed under 'utm_cta_pages' in category_grammar_rules.json).
+    Other T0 money pages get clean URLs — internal UTMs reset GA4 session
+    attribution and create parameter URL variants for crawlers."""
+    global _UTM_CTA_PAGES
+    if _UTM_CTA_PAGES is not None:
+        return _UTM_CTA_PAGES
+    p = _Path(__file__).parent.parent / "data" / "category_grammar_rules.json"
+    if not p.exists():
+        _UTM_CTA_PAGES = set()
+    else:
+        try:
+            _UTM_CTA_PAGES = {u.rstrip("/") for u in _json.load(open(p)).get("utm_cta_pages", [])}
+        except Exception:
+            _UTM_CTA_PAGES = set()
+    return _UTM_CTA_PAGES
+
+
 def append_utm_if_t0(target_url, source_url):
-    """If target is a T0 CTA landing page, append the standard body-CTA UTM
-    parameters so marketing attribution stays intact for auto-inserted links.
-    Otherwise return target_url unchanged.
+    """If target is a UTM-tracked CTA landing page (LP pages only, per policy),
+    append the standard body-CTA UTM parameters so those CTA clicks stay
+    trackable. All other targets (including non-LP T0 money pages) are
+    returned unchanged.
 
     Pattern matches what already exists on Propelld body CTAs:
         ?utm_source=website&utm_adgroup=blog-body&utm_campaign=<source-path>
     """
-    t0 = _load_t0_pages()
-    if target_url.rstrip("/") not in t0:
+    if target_url.rstrip("/") not in _load_utm_cta_pages():
         return target_url
     # Don't double-append if target already has query string
     if "?" in target_url:

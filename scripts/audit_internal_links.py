@@ -151,6 +151,29 @@ def classify(row, tier_map):
 
     return "KEEP", "compliant"
 
+def mark_duplicate_kills(df, t0_pages, t0_allowance=2):
+    """Mark repeat links (same source → same target) as KILL, keeping the
+    first occurrence.
+
+    T0 money/LP pages get an allowance of `t0_allowance` occurrences per
+    source post, because posts intentionally carry up to 2 tracked CTA links
+    to money pages (Wave B policy). Note extract_links/normalize_url already
+    strip query strings, so a UTM'd CTA and a clean link to the same page
+    correctly count as the same target here — without this allowance,
+    Wave B would kill the second intentional CTA in every post.
+
+    Returns (df, dup_mask).
+    """
+    df = df.sort_values(["source_url", "position_in_field"]).copy()
+    occ = df.groupby(["source_url", "target_url"]).cumcount()
+    t0 = {u.rstrip("/") for u in t0_pages}
+    allowance = df["target_url"].map(lambda t: t0_allowance if str(t).rstrip("/") in t0 else 1)
+    dup_mask = occ >= allowance
+    df.loc[dup_mask, "action"] = "KILL"
+    df.loc[dup_mask, "reason"] = "duplicate-target"
+    return df, dup_mask
+
+
 def main():
     p = argparse.ArgumentParser()
     p.add_argument("--tier-file", default="data/posts-with-tiers.xlsx")
@@ -180,17 +203,12 @@ def main():
         print("No links.")
         return
 
-    df["_dup"] = df["source_url"] + "|" + df["target_url"]
-    df = df.sort_values(["source_url","position_in_field"])
-    df["_first"] = ~df.duplicated("_dup", keep="first")
-
     print("Classifying...")
     acts = df.apply(lambda r: classify(r, tier_map), axis=1)
     df["action"] = [x[0] for x in acts]
     df["reason"] = [x[1] for x in acts]
-    df.loc[~df["_first"], "action"] = "KILL"
-    df.loc[~df["_first"], "reason"] = "duplicate-target"
-    df = df.drop(columns=["_dup","_first"])
+    df, _dups = mark_duplicate_kills(df, t0_pages, t0_allowance=2)
+    print(f"  Duplicate-target kills: {int(_dups.sum()):,} (T0/CTA pages allowed 2 per post)")
 
     print("\nActions:")
     print(df["action"].value_counts())

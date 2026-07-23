@@ -35,11 +35,11 @@ import time
 from pathlib import Path
 
 import pandas as pd
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, NavigableString
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from lib.webflow_client import WebflowClient, COLLECTIONS, BLOG_BODY_FIELDS, get_blog_body
-from lib.link_utils import link_count
+from lib.link_utils import link_count, extract_links, normalize_url
 
 # Reuse UTM helper from bulk_apply_links (already tested)
 if "scripts.bulk_apply_links" in sys.modules:
@@ -184,10 +184,41 @@ def md_link_to_html(new_sentence, source_url, preview_marker=False):
     return result
 
 
+def _norm_with_map(s):
+    """Collapse whitespace runs to single spaces while keeping a map from
+    each normalized-char index back to the original string index."""
+    norm, idx_map = [], []
+    prev_space = False
+    for i, ch in enumerate(s):
+        if ch.isspace():
+            if norm and not prev_space:
+                norm.append(" ")
+                idx_map.append(i)
+            prev_space = True
+        else:
+            norm.append(ch)
+            idx_map.append(i)
+            prev_space = False
+    if norm and norm[-1] == " ":
+        norm.pop()
+        idx_map.pop()
+    return "".join(norm), idx_map
+
+
 def apply_insertion_to_paragraph(soup, paragraph_idx, original_sentence, new_sentence_html):
     """
-    Find paragraph N in soup, locate original_sentence in its text, and
-    replace with new_sentence_html (which contains an <a> tag).
+    Find paragraph N in soup, locate original_sentence, and replace it with
+    new_sentence_html WITHOUT destroying the paragraph's other inline markup
+    (existing <a> links, <strong>, <em>, ...).
+
+    Strategy: the sentence must live entirely inside ONE text node (the
+    common case for prose). We splice only that node: text-before +
+    parsed(new_sentence_html) + text-after. Text inside existing <a> tags
+    is never touched.
+
+    If the sentence spans multiple inline elements we SKIP (fail-safe)
+    rather than flatten the paragraph, because flattening deletes existing
+    links and formatting.
 
     Returns (bool_ok, reason_if_not).
     """
@@ -196,41 +227,37 @@ def apply_insertion_to_paragraph(soup, paragraph_idx, original_sentence, new_sen
         return False, f"paragraph P{paragraph_idx} out of range"
     p = paras[paragraph_idx]
 
-    # Walk the text nodes and find the one containing the start of original_sentence
-    text_nodes = list(p.find_all(string=True))
-    combined = "".join(str(t) for t in text_nodes)
-    orig_norm = re.sub(r"\s+", " ", original_sentence).strip()
-    combined_norm = re.sub(r"\s+", " ", combined).strip()
+    orig_norm = re.sub(r"\s+", " ", str(original_sentence)).strip()
+    if not orig_norm:
+        return False, "empty original_sentence"
 
-    if orig_norm not in combined_norm:
-        return False, "original_sentence not in paragraph text"
+    for node in p.find_all(string=True):
+        if node.find_parent("a") is not None:
+            continue  # never splice inside an existing link
+        raw = str(node)
+        norm, idx_map = _norm_with_map(raw)
+        pos = norm.find(orig_norm)
+        if pos == -1:
+            continue
+        raw_start = idx_map[pos]
+        raw_end = idx_map[pos + len(orig_norm) - 1] + 1
+        before, after = raw[:raw_start], raw[raw_end:]
+        frag = BeautifulSoup(new_sentence_html, "html.parser")
+        pieces = []
+        if before:
+            pieces.append(NavigableString(before))
+        pieces.extend(list(frag.children))
+        if after:
+            pieces.append(NavigableString(after))
+        for piece in pieces:
+            node.insert_before(piece)
+        node.extract()
+        return True, "ok"
 
-    # Simplest reliable approach: rebuild paragraph inner HTML by replacing the
-    # sentence in the plaintext. This DOES lose inline formatting within that
-    # paragraph (bold/italic) but preserves the paragraph's surrounding context.
-    # For prose blog posts, this is acceptable.
-    #
-    # Alternative approach for later: walk text nodes and do a fine-grained
-    # split preserving inline tags. More brittle so skipping for now.
-
-    # Build new paragraph HTML: use plaintext of paragraph, replace the sentence,
-    # then wrap in <p> tag preserving attributes.
-    para_text = p.get_text(separator=" ")
-    para_text_norm = re.sub(r"\s+", " ", para_text).strip()
-    # Find case-preserving version of orig in para_text
-    start_idx = para_text_norm.find(orig_norm)
-    if start_idx == -1:
-        return False, "orig_sentence normalization mismatch"
-    # Replace in the normalized text
-    new_para_text = (para_text_norm[:start_idx] +
-                     new_sentence_html +
-                     para_text_norm[start_idx + len(orig_norm):])
-    # Parse the new inner HTML and swap into <p>
-    new_inner = BeautifulSoup(new_para_text, "html.parser")
-    p.clear()
-    for child in list(new_inner.children):
-        p.append(child)
-    return True, "ok"
+    combined_norm = re.sub(r"\s+", " ", p.get_text(separator=" ")).strip()
+    if orig_norm in combined_norm:
+        return False, "sentence spans inline markup (skipped to preserve links/formatting)"
+    return False, "original_sentence not in paragraph text"
 
 
 def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA):
@@ -248,6 +275,12 @@ def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA
         return {"slug": slug, "status": "no-post-body", "applied": 0, "skipped": 0}
 
     soup = BeautifulSoup(bodies["post-body"], "html.parser")
+
+    # All targets already linked in this post (any body field), normalized
+    existing_targets = set()
+    for _f, _html in bodies.items():
+        for _l in extract_links(_html):
+            existing_targets.add(_l["href"])
 
     for _, plan in plans_for_source.iterrows():
         if plan.get("action") != "insert":
@@ -275,11 +308,14 @@ def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA
             errors.append(f"delta-filter: +{delta} visible chars > {max_delta} limit")
             continue
 
-        # Idempotency: skip if target already in body (raw or UTM'd)
-        raw_tgt = str(plan["target_url"]).rstrip("/")
-        utm_tgt = append_utm_if_t0(raw_tgt, source_url)
-        if raw_tgt in str(soup) or utm_tgt in str(soup):
+        # Idempotency: skip if target already linked anywhere in the post
+        # (both body fields). Exact normalized-path comparison — a raw
+        # substring check has prefix collisions (/site/education-loan matches
+        # /site/education-loan-emi-calculator) and misses UTM'd variants.
+        raw_tgt = normalize_url(str(plan["target_url"]))
+        if raw_tgt in existing_targets:
             skipped += 1
+            errors.append(f"idempotent-skip: {raw_tgt} already linked")
             continue
 
         # Convert markdown link in new_sentence to HTML (with UTM handling)
@@ -294,6 +330,7 @@ def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA
             )
             if ok:
                 applied += 1
+                existing_targets.add(raw_tgt)
             else:
                 skipped += 1
                 errors.append(reason)
@@ -305,6 +342,26 @@ def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA
         bodies["post-body"] = str(soup)
 
     after_links = {k: link_count(v) for k, v in bodies.items()}
+
+    # SAFETY INVARIANT: every applied insertion adds exactly one link and
+    # must never remove any. If the post ends with fewer links than
+    # before + applied, something destroyed existing links — refuse to write.
+    total_before = sum(before_links.values())
+    total_after = sum(after_links.values())
+    if total_after < total_before + applied:
+        return {
+            "slug": slug,
+            "source_url": source_url,
+            "planned": len(plans_for_source),
+            "applied": applied,
+            "skipped": skipped,
+            "before_links": total_before,
+            "after_links": total_after,
+            "status": "INVARIANT-FAILED-LINK-LOSS",
+            "errors_notes": (f"link-count invariant failed: before={total_before} "
+                             f"+ applied={applied} > after={total_after}; write refused"),
+        }, None
+
     changed = [k for k in BLOG_BODY_FIELDS if bodies.get(k) != original.get(k)]
 
     log = {
