@@ -44,7 +44,7 @@ from lib.link_utils import link_count, extract_links, normalize_url
 # Reuse UTM helper from bulk_apply_links (already tested)
 if "scripts.bulk_apply_links" in sys.modules:
     del sys.modules["scripts.bulk_apply_links"]
-from scripts.bulk_apply_links import append_utm_if_t0
+from scripts.bulk_apply_links import append_utm_if_t0, _load_t0_pages
 
 HALT_ERROR_RATE = 0.05
 MAX_SENTENCE_DELTA = 60  # Skip insertions that add more than this many characters
@@ -274,13 +274,26 @@ def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA
     if "post-body" not in bodies:
         return {"slug": slug, "status": "no-post-body", "applied": 0, "skipped": 0}
 
-    soup = BeautifulSoup(bodies["post-body"], "html.parser")
+    # v6: plans carry a `field` column (post-body | post-body-2nd-half).
+    # Older v5 plans have no field column and default to post-body.
+    soups = {}
+
+    def _get_soup(field):
+        if field not in soups:
+            soups[field] = BeautifulSoup(bodies.get(field, "") or "", "html.parser")
+        return soups[field]
 
     # All targets already linked in this post (any body field), normalized
     existing_targets = set()
     for _f, _html in bodies.items():
         for _l in extract_links(_html):
             existing_targets.add(_l["href"])
+
+    # Per-post T0 CTA cap (max 2, Wave B policy) — counts links already in
+    # the post plus ones applied in this run. Belt-and-braces: the v6
+    # allocator enforces this at plan time too.
+    _t0_set = _load_t0_pages()
+    t0_count = sum(1 for t in existing_targets if t in _t0_set)
 
     for _, plan in plans_for_source.iterrows():
         if plan.get("action") != "insert":
@@ -294,6 +307,16 @@ def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA
         if has_val_err:
             skipped += 1
             errors.append(f"validation: {val_err}")
+            continue
+
+        field = str(plan.get("field") or "post-body")
+        if field not in ("post-body", "post-body-2nd-half"):
+            skipped += 1
+            errors.append(f"unknown field: {field}")
+            continue
+        if not (bodies.get(field) or "").strip():
+            skipped += 1
+            errors.append(f"field {field} empty on this post")
             continue
 
         # Delta filter — measure VISIBLE-text growth (stripping link markup),
@@ -318,12 +341,18 @@ def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA
             errors.append(f"idempotent-skip: {raw_tgt} already linked")
             continue
 
+        # Per-post T0 CTA cap
+        if raw_tgt in _t0_set and t0_count >= 2:
+            skipped += 1
+            errors.append(f"t0-cta-cap: post already has 2 money-page links")
+            continue
+
         # Convert markdown link in new_sentence to HTML (with UTM handling)
         new_sentence_html = md_link_to_html(str(plan["new_sentence"]), source_url)
 
         try:
             ok, reason = apply_insertion_to_paragraph(
-                soup,
+                _get_soup(field),
                 int(plan["paragraph_idx"]),
                 str(plan["original_sentence"]),
                 new_sentence_html,
@@ -331,6 +360,8 @@ def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA
             if ok:
                 applied += 1
                 existing_targets.add(raw_tgt)
+                if raw_tgt in _t0_set:
+                    t0_count += 1
             else:
                 skipped += 1
                 errors.append(reason)
@@ -339,7 +370,8 @@ def process_source(item, plans_for_source, dry_run, max_delta=MAX_SENTENCE_DELTA
             errors.append(f"exception: {str(e)[:100]}")
 
     if applied > 0:
-        bodies["post-body"] = str(soup)
+        for _field, _soup in soups.items():
+            bodies[_field] = str(_soup)
 
     after_links = {k: link_count(v) for k, v in bodies.items()}
 
