@@ -15,6 +15,7 @@ on:
           - link_health_report
           # Refiners (produce CSVs for review, no site changes)
           - link_recommender
+          - generate_anchor_variants
           - anchor_refiner
           - refine_audit_rewrites
           - preview_link_insertions
@@ -42,6 +43,9 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: write
+
 jobs:
   run:
     runs-on: ubuntu-latest
@@ -67,6 +71,20 @@ jobs:
           if [ -n "${{ inputs.extra_args }}" ]; then ARGS="$ARGS ${{ inputs.extra_args }}"; fi
           echo "FINAL ARGS: $ARGS"
           python scripts/${{ inputs.script }}.py $ARGS
+
+      - name: Commit generated anchor library back to repo
+        if: inputs.script == 'generate_anchor_variants' && inputs.apply
+        run: |
+          if ! git diff --quiet -- data/anchor_library_full.json 2>/dev/null || \
+             [ -n "$(git status --porcelain data/anchor_library_full.json)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/anchor_library_full.json
+            git commit -m "Auto-generate expanded anchor library (${{ github.run_id }})"
+            git push
+          else
+            echo "No changes to anchor library."
+          fi
 
       - name: Upload any output artifacts
         if: always()
