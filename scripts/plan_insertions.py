@@ -72,13 +72,13 @@ MAX_BODY_CHARS_PER_PARA = 800
 MAX_PARAGRAPHS = 40            # across both fields (v5: 25, one field)
 
 # ---------------- policy constants ----------------
-PER_POST_MAX = 5
-PER_POST_TARGET = 4
-PER_POST_MIN = 3
+PER_POST_MAX = 6            # raised from 5 (user decision 23-Jul: 4-6 ok)
+PER_POST_TARGET = 5         # bridges may fill up to this; wraps up to MAX
+PER_POST_MIN = 3            # wave-2 top-up triggers below this
 PER_POST_T0_MAX = 2            # Wave B policy, now actually enforced
 ANCHOR_REPEAT_CAP = 25         # same exact anchor → same target, per run
 MAX_VISIBLE_DELTA = 60
-CANDIDATE_POOL = 25            # v5: 10-15
+CANDIDATE_POOL = 35            # v5: 10-15; raised for wave-2 top-up depth
 
 TIER_RANK = {"T0": 0, "T1P": 1, "T1": 2, "T2": 3, "T3": 4, "T4": 5}
 
@@ -200,12 +200,18 @@ def load_grammar():
 
 
 def load_anchor_library():
-    p = Path(__file__).parent.parent / "data" / "anchor_library_starter.json"
-    try:
-        return {normalize_url(k): v for k, v in
-                json.load(open(p)).get("destinations", {}).items()}
-    except Exception:
-        return {}
+    """Prefer the auto-expanded full library (generate_anchor_variants.py)
+    over the 119-destination starter — more destinations = more wrap hits."""
+    base = Path(__file__).parent.parent / "data"
+    for name in ["anchor_library_full.json", "anchor_library_starter.json"]:
+        p = base / name
+        if p.exists():
+            try:
+                return {normalize_url(k): v for k, v in
+                        json.load(open(p)).get("destinations", {}).items()}
+            except Exception:
+                continue
+    return {}
 
 
 def tier_budget(tier, grammar):
@@ -265,6 +271,23 @@ def visible_text_len(s):
     s = MD_LINK_RE.sub(r"\1", s)
     s = re.sub(r"<a\s+[^>]*>([^<]*)</a>", r"\1", s, flags=re.I | re.S)
     return len(s)
+
+
+def _stem(t):
+    return t[:-1] if t.endswith("s") and len(t) > 3 else t
+
+
+def anchor_describes_target(anchor, target_url, target_title=""):
+    """Vague-anchor guard (from 23-Jul review: '[interest rate]' →
+    roi-in-education-loan, '[December schedule]' → clat-exam-date).
+    The anchor must share at least one distinctive stemmed token with the
+    target's slug or title, so the reader can predict where the link goes."""
+    a = {_stem(t) for t in _tokenize(anchor)}
+    if not a:
+        return False
+    tgt = {_stem(t) for t in
+           (_slug_tokens(target_url) | _tokenize(target_title))}
+    return bool(a & tgt)
 
 
 def scaffold_introduced(original_sentence, new_sentence):
@@ -564,7 +587,7 @@ RULES — every one is enforced by code after you answer:
 3. Minimal edit. The sentence must keep its meaning, voice and rhythm. Reader-visible growth must stay under {MAX_VISIBLE_DELTA} characters; under 30 is much better.
 4. BEST option is always wrapping an existing phrase in the sentence as the anchor (near-zero added characters). Only add connecting words if no wrappable phrase exists.
 5. FORBIDDEN connector phrases — your edit may not introduce any of: {banned}. These read as algorithmic filler at catalogue scale. If you feel pulled toward one, either wrap an existing phrase instead or integrate the reference as a plain grammatical part of the sentence (an appositive, an object, a parenthetical of 1-3 words).
-6. Anchor text 2-8 words, descriptive of the target. Never "click here"/"read more"/generic verbs.
+6. Anchor text 2-8 words and it must contain at least one distinctive word from the target's own title or URL. "[interest rate]" pointing at a page about ROI in education loans is too vague; "[December schedule]" pointing at CLAT exam dates tells the reader nothing. Never "click here"/"read more"/generic verbs.
 7. No em dashes (— or --). Max one insertion per paragraph. Never two targets in the same paragraph.
 8. The target's concept must actually be discussed in the sentence's paragraph. If it's only category-adjacent, skip.
 9. Your edit must be a PURE INSERTION: the original sentence's words all stay, in order, unchanged. Never reword or shorten. Never extend an existing word into a longer phrase ("collateral" → "collateral requirements" is FORBIDDEN, even when it reads fine — wrap the existing words as-is instead). Any added text must sit at a punctuation boundary: after a comma, inside (parentheses), or after a colon. In a list ("such as MBBS, BDS, or..."), either wrap an existing item or add a NEW item of the SAME kind between commas — never turn "BDS" into "BDS rank predictor".
@@ -618,7 +641,8 @@ def _strip_em_dashes(text):
     return re.sub(r"\s*--\s*", ", ", text)
 
 
-def validate_bridge_decision(d, para_by_label, allowed_targets, alloc, source_url):
+def validate_bridge_decision(d, para_by_label, allowed_targets, alloc, source_url,
+                             target_titles=None):
     """Returns (ok, why, normalized_decision)."""
     if d.get("action") != "insert":
         return False, "skip", d
@@ -654,6 +678,10 @@ def validate_bridge_decision(d, para_by_label, allowed_targets, alloc, source_ur
         return False, "link URL differs from allocated target", d
     if not (2 <= len(anchor.split()) <= 8):
         return False, f"anchor '{anchor}' not 2-8 words", d
+    title = (target_titles or {}).get(tgt, "")
+    if not anchor_describes_target(anchor, tgt, title):
+        return False, (f"anchor '{anchor}' is too vague, it shares no word with "
+                       f"the target's title/slug; use the target's own key words"), d
     delta = visible_text_len(new) - len(orig)
     if delta > MAX_VISIBLE_DELTA:
         return False, f"adds {delta} visible chars (cap {MAX_VISIBLE_DELTA})", d
@@ -672,6 +700,8 @@ def validate_bridge_decision(d, para_by_label, allowed_targets, alloc, source_ur
     d["_field"] = rec["field"]
     d["_pidx"] = rec["pidx"]
     d["target_url"] = tgt
+    d["new_sentence"] = MD_LINK_RE.sub(
+        lambda m: f"[{m.group(1)}]({tgt})", new, count=1)
     return True, "", d
 
 
@@ -827,83 +857,119 @@ def main():
             print("ERROR: anthropic package missing; use --no-llm or install it")
             sys.exit(1)
         ac = anthropic.Anthropic()
-        for i, (su, targets) in enumerate(by_source.items()):
-            ctx = source_ctx[su]
-            para_by_label = {r["label"]: r for r in ctx["para_records"]}
-            allowed = {e["target_url"] for e in targets}
-            edge_by_target = {e["target_url"]: e for e in targets}
-            settled = set()
+        refused = {}   # source_url -> set(target_url) the model skipped/failed
 
-            def handle(decisions, failures):
-                for d in decisions:
-                    tgt = normalize_url(str(d.get("target_url", "")))
-                    if tgt in settled:
-                        continue
-                    ok, why, d = validate_bridge_decision(
-                        d, para_by_label, allowed, alloc, su)
-                    if ok:
-                        e = edge_by_target[tgt]
-                        alloc.used_paras.add((su, d["_field"], d["_pidx"]))
-                        k = (tgt, d["anchor"].lower())
-                        alloc.anchor_counts[k] = alloc.anchor_counts.get(k, 0) + 1
-                        settled.add(tgt)
-                        plans.append({"source_url": su, "source_slug": ctx["slug"],
-                                      "field": d["_field"],
-                                      "paragraph_idx": d["_pidx"],
-                                      "target_url": tgt, "action": "insert",
-                                      "insertion_type": "bridge",
-                                      "anchor": d["anchor"],
-                                      "original_sentence": d["original_sentence"],
-                                      "new_sentence": d["new_sentence"],
-                                      "reasoning": d.get("reasoning", ""),
-                                      "validation_error": "",
-                                      "status": "planned"})
-                    elif why not in ("skip",) and d.get("action") == "insert":
-                        failures.append({"target_url": tgt, "why": why,
-                                         "original_sentence":
-                                             str(d.get("original_sentence", ""))[:200],
-                                         "new_sentence":
-                                             str(d.get("new_sentence", ""))[:200]})
-                    else:
-                        plans.append({"source_url": su, "source_slug": ctx["slug"],
-                                      "target_url": tgt, "action": "skip",
-                                      "insertion_type": "bridge",
-                                      "reasoning": str(d.get("reasoning", ""))[:200],
-                                      "validation_error": "",
-                                      "status": "llm-skipped"})
+        def run_bridge_wave(by_source, wave):
+            for i, (su, targets) in enumerate(by_source.items()):
+                ctx = source_ctx[su]
+                para_by_label = {r["label"]: r for r in ctx["para_records"]}
+                allowed = {e["target_url"] for e in targets}
+                titles = {e["target_url"]: e.get("target_title", "") for e in targets}
+                edge_by_target = {e["target_url"]: e for e in targets}
+                settled = set()
 
-            try:
-                prompt = build_bridge_prompt(su, ctx["meta"].get("title", ""),
-                                             ctx["meta"].get("category", ""),
-                                             ctx["para_records"], targets)
-                result = call_llm(ac, prompt, model=a.model)
-                failures = []
-                handle(result.get("decisions", []), failures)
-                if failures:  # one retry with the failure named
-                    retry = call_llm(
-                        ac, prompt + "\n\n" + build_retry_prompt(failures),
-                        model=a.model)
-                    handle(retry.get("decisions", []), [])
-            except Exception as e:
-                plans.append({"source_url": su,
-                              "status": f"error: {str(e)[:200]}"})
-            # release unfilled bridge slots; log dropped edges for observability
-            for e in targets:
-                if e["target_url"] not in settled:
-                    alloc.release(e)
-                    already = any(pl.get("source_url") == su and
-                                  pl.get("target_url") == e["target_url"]
-                                  for pl in plans)
-                    if not already:
-                        plans.append({"source_url": su, "source_slug": ctx["slug"],
-                                      "target_url": e["target_url"],
-                                      "action": "skip", "insertion_type": "bridge",
-                                      "reasoning": "",
-                                      "validation_error": "dropped: failed validation after retry or no decision returned",
-                                      "status": "dropped"})
-            if (i + 1) % 10 == 0:
-                print(f"  [{i+1}/{len(by_source)}] bridge calls done")
-            time.sleep(a.sleep)
+                def handle(decisions, failures):
+                    for d in decisions:
+                        tgt = normalize_url(str(d.get("target_url", "")))
+                        if tgt in settled:
+                            continue
+                        ok, why, d = validate_bridge_decision(
+                            d, para_by_label, allowed, alloc, su,
+                            target_titles=titles)
+                        if ok:
+                            alloc.used_paras.add((su, d["_field"], d["_pidx"]))
+                            k = (tgt, d["anchor"].lower())
+                            alloc.anchor_counts[k] = alloc.anchor_counts.get(k, 0) + 1
+                            settled.add(tgt)
+                            plans.append({"source_url": su, "source_slug": ctx["slug"],
+                                          "field": d["_field"],
+                                          "paragraph_idx": d["_pidx"],
+                                          "target_url": tgt, "action": "insert",
+                                          "insertion_type": "bridge",
+                                          "anchor": d["anchor"],
+                                          "original_sentence": d["original_sentence"],
+                                          "new_sentence": d["new_sentence"],
+                                          "reasoning": d.get("reasoning", ""),
+                                          "validation_error": "",
+                                          "status": "planned"})
+                        elif why not in ("skip",) and d.get("action") == "insert":
+                            failures.append({"target_url": tgt, "why": why,
+                                             "original_sentence":
+                                                 str(d.get("original_sentence", ""))[:200],
+                                             "new_sentence":
+                                                 str(d.get("new_sentence", ""))[:200]})
+                        else:
+                            refused.setdefault(su, set()).add(tgt)
+                            plans.append({"source_url": su, "source_slug": ctx["slug"],
+                                          "target_url": tgt, "action": "skip",
+                                          "insertion_type": "bridge",
+                                          "reasoning": str(d.get("reasoning", ""))[:200],
+                                          "validation_error": "",
+                                          "status": "llm-skipped"})
+
+                try:
+                    prompt = build_bridge_prompt(su, ctx["meta"].get("title", ""),
+                                                 ctx["meta"].get("category", ""),
+                                                 ctx["para_records"], targets)
+                    result = call_llm(ac, prompt, model=a.model)
+                    failures = []
+                    handle(result.get("decisions", []), failures)
+                    if failures:  # one retry with the failure named
+                        retry = call_llm(
+                            ac, prompt + "\n\n" + build_retry_prompt(failures),
+                            model=a.model)
+                        handle(retry.get("decisions", []), [])
+                except Exception as e:
+                    plans.append({"source_url": su,
+                                  "status": f"error: {str(e)[:200]}"})
+                for e in targets:
+                    if e["target_url"] not in settled:
+                        alloc.release(e)
+                        refused.setdefault(su, set()).add(e["target_url"])
+                        already = any(pl.get("source_url") == su and
+                                      pl.get("target_url") == e["target_url"]
+                                      for pl in plans)
+                        if not already:
+                            plans.append({"source_url": su, "source_slug": ctx["slug"],
+                                          "target_url": e["target_url"],
+                                          "action": "skip", "insertion_type": "bridge",
+                                          "reasoning": "",
+                                          "validation_error": "dropped: failed validation after retry or no decision returned",
+                                          "status": "dropped"})
+                if (i + 1) % 10 == 0:
+                    print(f"  [wave {wave}: {i+1}/{len(by_source)}] bridge calls done")
+                time.sleep(a.sleep)
+
+        run_bridge_wave(by_source, wave=1)
+
+        # ---- Wave 2 top-up: posts still under PER_POST_MIN get one more
+        # round from their next-best, not-yet-tried candidates ----
+        allocated_pairs = {(e["source_url"], e["target_url"])
+                           for e in chosen_bridges + chosen_wraps}
+        topup_pool = []
+        for e in bridge_edges:
+            su = e["source_url"]
+            if alloc.per_post.get(su, 0) >= PER_POST_MIN:
+                continue
+            if (su, e["target_url"]) in allocated_pairs:
+                continue
+            if e["target_url"] in refused.get(su, set()):
+                continue  # model already said no / failed on this target
+            topup_pool.append(e)
+        topup = []
+        for e in sorted(topup_pool, key=lambda x: -x["relevance"]):
+            if alloc.per_post.get(e["source_url"], 0) >= PER_POST_TARGET:
+                continue
+            if alloc.can_take(e):
+                alloc.take(e)
+                topup.append(e)
+        if topup:
+            by_source2 = {}
+            for e in topup:
+                by_source2.setdefault(e["source_url"], []).append(e)
+            print(f"Wave 2 top-up: {len(topup)} extra slots across "
+                  f"{len(by_source2)} under-filled posts")
+            run_bridge_wave(by_source2, wave=2)
 
     # -------- output + run report --------
     df = pd.DataFrame(plans)

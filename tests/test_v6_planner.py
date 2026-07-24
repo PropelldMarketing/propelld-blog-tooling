@@ -392,3 +392,53 @@ def test_new_scaffolds_as_with_see_also():
     assert scaffold_introduced(orig, bad) == "as with"
     bad2 = "Candidates must understand the exam pattern (see also MAT pattern) to prepare well."
     assert scaffold_introduced(orig, bad2) == "see also"
+
+
+# ================= v6.2 guards (23-Jul preview feedback) =================
+
+from scripts.plan_insertions import anchor_describes_target, PER_POST_TARGET
+
+
+def test_vague_anchor_rejected_interest_rate_case():
+    # real case: "[interest rate]" → /site/blog/what-is-roi-in-education-loan
+    assert not anchor_describes_target("interest rate",
+                                       "/site/blog/what-is-roi-in-education-loan",
+                                       "What is ROI in Education Loan")
+
+
+def test_vague_anchor_rejected_december_schedule_case():
+    # real case: "[December schedule]" → /site/blog/clat-exam-date
+    assert not anchor_describes_target("December schedule",
+                                       "/site/blog/clat-exam-date",
+                                       "CLAT Exam Date 2026")
+
+
+def test_descriptive_anchors_accepted_with_stemming():
+    assert anchor_describes_target("CLAT exam dates", "/site/blog/clat-exam-date", "")
+    assert anchor_describes_target("student loans", "/site/college-loan",
+                                   "College Loan")  # loans→loan stem
+    assert anchor_describes_target("education loan ROI explained",
+                                   "/site/blog/what-is-roi-in-education-loan", "")
+
+
+def test_validator_canonicalizes_link_url():
+    recs = extract_paragraph_records(_bodies())
+    para_by_label = {r["label"]: r for r in recs}
+    alloc = Allocator({}, T0)
+    d = {"action": "insert", "target_url": "https://www.propelld.com/site/blog/collateral-guide",
+         "paragraph_label": 2,
+         "original_sentence": "Banks evaluate collateral before sanctioning amounts.",
+         "new_sentence": "Banks evaluate [collateral before sanctioning](https://www.propelld.com/site/blog/collateral-guide) amounts.",
+         "anchor": "collateral before sanctioning"}
+    ok, why, d = validate_bridge_decision(d, para_by_label,
+                                          {"/site/blog/collateral-guide"}, alloc,
+                                          "/site/blog/src",
+                                          target_titles={"/site/blog/collateral-guide": "Collateral Guide"})
+    assert ok, why
+    # full-host URL must be rewritten to the canonical path in the plan
+    assert "](/site/blog/collateral-guide)" in d["new_sentence"]
+    assert "propelld.com" not in d["new_sentence"]
+
+
+def test_density_constants_raised():
+    assert PER_POST_MAX == 6 and PER_POST_TARGET == 5
