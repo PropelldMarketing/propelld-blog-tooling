@@ -442,3 +442,25 @@ def test_validator_canonicalizes_link_url():
 
 def test_density_constants_raised():
     assert PER_POST_MAX == 6 and PER_POST_TARGET == 5
+
+
+def test_single_generic_title_word_no_longer_enough():
+    # 24-Jul regression: vague anchors slipped through via one title word.
+    # Note: "interest rate" → a page titled "Interest Rates Explained" is
+    # legitimately descriptive (2 title-word overlap) and stays allowed;
+    # "interest rate" → the ROI page (no overlap) stays banned.
+    assert anchor_describes_target("interest rate", "/site/blog/student-loan-apr",
+                                   "Student Loan APR: Interest Rates Explained")
+    assert not anchor_describes_target("interest rate",
+                                       "/site/blog/what-is-roi-in-education-loan",
+                                       "What is ROI in Education Loan")
+    assert not anchor_describes_target("December schedule", "/site/blog/clat-exam-date",
+                                       "CLAT Exam Date 2026 & Full Schedule")
+    assert not anchor_describes_target("total score", "/site/blog/nmat-exam-result-2024",
+                                       "NMAT Exam Result 2024: Score & Percentile")
+    # but slug overlap still passes
+    assert anchor_describes_target("student loan APR", "/site/blog/student-loan-apr", "")
+    # and two title words still pass
+    assert anchor_describes_target("NMAT score and percentile",
+                                   "/site/blog/nmat-exam-result-2024",
+                                   "NMAT Exam Result 2024: Score & Percentile")

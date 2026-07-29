@@ -278,16 +278,20 @@ def _stem(t):
 
 
 def anchor_describes_target(anchor, target_url, target_title=""):
-    """Vague-anchor guard (from 23-Jul review: '[interest rate]' →
-    roi-in-education-loan, '[December schedule]' → clat-exam-date).
-    The anchor must share at least one distinctive stemmed token with the
-    target's slug or title, so the reader can predict where the link goes."""
+    """Vague-anchor guard, tightened 24-Jul: a single generic title word
+    ("schedule", "rate", "score") was enough to sneak vague anchors past
+    the first version. Now the anchor must overlap the SLUG (the slug is
+    the target's distinctive identity) or share at least TWO title words.
+    Kills '[interest rate]' → student-loan-apr and '[December schedule]'
+    → clat-exam-date while keeping '[CLAT exam dates]' etc."""
     a = {_stem(t) for t in _tokenize(anchor)}
     if not a:
         return False
-    tgt = {_stem(t) for t in
-           (_slug_tokens(target_url) | _tokenize(target_title))}
-    return bool(a & tgt)
+    slug = {_stem(t) for t in _slug_tokens(target_url)}
+    if a & slug:
+        return True
+    title = {_stem(t) for t in _tokenize(target_title)}
+    return len(a & title) >= 2
 
 
 def scaffold_introduced(original_sentence, new_sentence):
