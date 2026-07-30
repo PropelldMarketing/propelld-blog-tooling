@@ -24,6 +24,11 @@ def main():
     p = argparse.ArgumentParser()
     p.add_argument("--from-snapshot", required=True)
     p.add_argument("--slugs", default=None)
+    p.add_argument("--from-log", default=None,
+                   help="Path to a bulk-apply log CSV; restores ONLY the posts "
+                        "that log marks status=patched. Combine with the "
+                        "snapshot_run_id workflow input to roll back exactly "
+                        "what a previous run changed, nothing else.")
     p.add_argument("--apply", action="store_true")
     a = p.parse_args()
 
@@ -39,7 +44,15 @@ def main():
     else:
         all_slugs = [p.stem for p in snap_dir.glob("*.json") if p.stem != "manifest"]
 
-    if a.slugs:
+    if a.from_log:
+        log = pd.read_csv(a.from_log)
+        patched = log[log.get("status") == "patched"]["slug"].dropna().astype(str).tolist()
+        targets = [s for s in patched if s in all_slugs]
+        missing = [s for s in patched if s not in all_slugs]
+        print(f"--from-log: {len(patched)} patched in log, "
+              f"{len(targets)} matched in snapshot"
+              + (f", {len(missing)} MISSING from snapshot" if missing else ""))
+    elif a.slugs:
         targets = [s for s in a.slugs.split(",") if s in all_slugs]
         missing = [s for s in a.slugs.split(",") if s not in all_slugs]
         if missing:
