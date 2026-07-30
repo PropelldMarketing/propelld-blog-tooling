@@ -171,6 +171,18 @@ def mark_duplicate_kills(df, t0_pages, t0_allowance=2):
     dup_mask = occ >= allowance
     df.loc[dup_mask, "action"] = "KILL"
     df.loc[dup_mask, "reason"] = "duplicate-target"
+
+    # Wave B policy: max 2 in-content money-page links per post TOTAL,
+    # across DISTINCT targets too (the duplicate rule above only caps
+    # same-target repeats). Keep the first 2 by position, kill the rest.
+    surviving_t0 = df[(~dup_mask) & df["target_url"].map(
+        lambda t: str(t).rstrip("/") in t0)].sort_values(
+        ["source_url", "position_in_field"])
+    t0_occ = surviving_t0.groupby("source_url").cumcount()
+    overflow_idx = surviving_t0.index[t0_occ >= t0_allowance]
+    df.loc[overflow_idx, "action"] = "KILL"
+    df.loc[overflow_idx, "reason"] = "t0-cta-overflow"
+    dup_mask = dup_mask | df.index.isin(overflow_idx)
     return df, dup_mask
 
 
