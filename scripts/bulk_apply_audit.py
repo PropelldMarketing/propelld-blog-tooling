@@ -249,6 +249,9 @@ def main():
     p.add_argument("--sleep", type=float, default=0.15,
                    help="Seconds between API calls (default 0.15)")
     p.add_argument("--output-log", default="out/bulk-apply-audit-log.csv")
+    p.add_argument("--no-publish", action="store_true",
+                   help="Leave changes staged (queued to publish) instead of "
+                        "publishing the touched items live")
     p.add_argument("--tier-file", default="data/posts-with-tiers.xlsx",
                    help="Tier file for --tier-filter lookups")
     a = p.parse_args()
@@ -318,6 +321,7 @@ def main():
 
     print(f"\nProcessing {len(grouped)} source posts...")
     logs = []
+    patched_item_ids = []
     errors = 0
     processed = 0
     for source_url, rows in grouped:
@@ -335,6 +339,7 @@ def main():
             if patch and a.apply:
                 client.update_item(COLLECTIONS["blog_posts"], item_id, patch)
                 log["status"] = "patched"
+                patched_item_ids.append(item_id)
                 time.sleep(a.sleep)
             elif not patch and a.apply:
                 log["status"] = "no-change"
@@ -349,6 +354,16 @@ def main():
         if processed > 20 and errors / processed > HALT_ERROR_RATE:
             print(f"\n! HALT: error rate {errors/processed:.1%} exceeds threshold")
             break
+
+    # PUBLISH: Webflow PATCH only stages a draft ("queued to publish").
+    # Without this step nothing changes on the live site until someone
+    # happens to publish, at uncontrolled timing.
+    if a.apply and patched_item_ids and not a.no_publish:
+        print(f"\nPublishing {len(patched_item_ids)} updated items live...")
+        client.publish_items(COLLECTIONS["blog_posts"], patched_item_ids)
+        print("  ✓ Published")
+    elif a.apply and patched_item_ids:
+        print(f"\n--no-publish: {len(patched_item_ids)} items left staged")
 
     Path(a.output_log).parent.mkdir(parents=True, exist_ok=True)
     log_df = pd.DataFrame(logs)

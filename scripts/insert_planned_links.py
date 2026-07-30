@@ -425,6 +425,8 @@ def main():
     p.add_argument("--limit", type=int, default=0)
     p.add_argument("--skip-snapshot", action="store_true")
     p.add_argument("--apply", action="store_true")
+    p.add_argument("--no-publish", action="store_true",
+                   help="Leave changes staged instead of publishing live")
     p.add_argument("--sleep", type=float, default=0.2)
     p.add_argument("--max-delta", type=int, default=MAX_SENTENCE_DELTA,
                    help="Skip insertions whose new_sentence adds more than "
@@ -475,6 +477,7 @@ def main():
 
     logs = []
     errors = 0
+    patched_item_ids = []
     for i, (source_url, plans_for_source) in enumerate(grouped):
         slug = source_url.rsplit("/", 1)[-1]
         item = slug_to_item.get(slug)
@@ -487,6 +490,7 @@ def main():
             if patch and a.apply:
                 client.update_item(COLLECTIONS["blog_posts"], item["id"], patch)
                 log["status"] = "patched"
+                patched_item_ids.append(item["id"])
                 time.sleep(a.sleep)
             elif not patch and a.apply:
                 log["status"] = "no-change"
@@ -500,6 +504,15 @@ def main():
         if i + 1 > 20 and errors / (i + 1) > HALT_ERROR_RATE:
             print(f"\n! HALT: error rate {errors/(i+1):.1%} exceeds {HALT_ERROR_RATE:.0%}")
             break
+
+    # PUBLISH: PATCH only stages a draft in Webflow; publish makes it live.
+    if a.apply and patched_item_ids and not a.no_publish:
+        print(f"\nPublishing {len(patched_item_ids)} updated items live...")
+        client.publish_items(COLLECTIONS["blog_posts"], patched_item_ids)
+        print("  ✓ Published")
+    elif a.apply and patched_item_ids:
+        print(f"\n--no-publish: {len(patched_item_ids)} items left staged")
+
 
     Path(a.output_log).parent.mkdir(parents=True, exist_ok=True)
     log_df = pd.DataFrame(logs)

@@ -159,6 +159,48 @@ def link_count(html: str) -> int:
     return len(extract_links(html))
 
 
+
+BLOCK_TAGS = {"p", "div", "h1", "h2", "h3", "h4", "h5", "h6",
+              "li", "figure", "blockquote"}
+_INLINE_WRAPPERS = {"span", "strong", "em", "b", "i", "u"}
+
+
+def _link_only_block(a):
+    """If this <a> is essentially the ENTIRE content of its enclosing block
+    (a CTA banner like '<p><strong><a>Get an education loan - Apply now</a>
+    </strong></p>'), return that outermost block element. Return None when
+    the link sits inside prose (parent has meaningfully more text).
+
+    Unwrapping a CTA link leaves a dead marketing sentence in the page;
+    such links must take their whole block with them (found on live review
+    of the Wave B canary, e.g. 80-marks-in-jee-mains)."""
+    a_text = a.get_text(" ", strip=True)
+    if not a_text:
+        return None
+    best = None
+    parent = a.parent
+    while parent is not None and getattr(parent, "name", None) in (BLOCK_TAGS | _INLINE_WRAPPERS):
+        p_text = parent.get_text(" ", strip=True)
+        # parent adds no meaningful text beyond the link itself (≤15 chars slack)
+        if len(p_text) > len(a_text) + 15:
+            break
+        if parent.name in BLOCK_TAGS:
+            best = parent
+        parent = parent.parent
+    return best
+
+
+def _remove_a(a):
+    """Remove one matched link: decompose the whole block for link-only CTA
+    blocks, unwrap (keep text) for prose links. Returns 'block' or 'unwrap'."""
+    block = _link_only_block(a)
+    if block is not None:
+        block.decompose()
+        return "block"
+    a.unwrap()
+    return "unwrap"
+
+
 def remove_link(html: str, target_url: str, anchor_text: str = None,
                 position: int = None, occurrence: int = 0) -> tuple:
     """
@@ -185,8 +227,8 @@ def remove_link(html: str, target_url: str, anchor_text: str = None,
     if occurrence >= len(matches):
         return html, 0
     a = matches[occurrence]
-    # Unwrap: replace <a>text</a> with just text
-    a.unwrap()
+    # CTA-aware: link-only blocks are removed whole; prose links unwrap
+    _remove_a(a)
     return str(soup), 1
 
 
@@ -205,7 +247,7 @@ def remove_duplicate_links(html: str, target_url: str, keep_n: int = 1) -> tuple
         return html, 0
     removed = 0
     for a in matches[keep_n:]:
-        a.unwrap()
+        _remove_a(a)
         removed += 1
     return str(soup), removed
 
