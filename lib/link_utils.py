@@ -277,3 +277,61 @@ def rewrite_anchor(html: str, target_url: str, new_anchor: str,
     a.clear()
     a.append(new_anchor)
     return str(soup), 1
+
+
+def remove_duplicate_links_spaced(bodies, target_url, keep_n=2,
+                                  field_order=("post-body", "post-body-2nd-half")):
+    """
+    Post-level duplicate removal with SPACING-AWARE selection.
+
+    Instead of keeping the first keep_n occurrences (which bunches CTAs in
+    the top 10-15%% of long articles), this looks at every link to
+    `target_url` across BOTH body fields, computes each one's depth as a
+    fraction of the whole article's text, and keeps the occurrences closest
+    to the ideal evenly-spaced positions ((k+0.5)/keep_n → 25%% and 75%% for
+    keep_n=2). Everything else is removed CTA-aware (link-only blocks go
+    whole, prose links unwrap).
+
+    Note: this chooses among EXISTING positions — if all CTAs sit at the
+    top, the kept ones still sit at the top. Returns (new_bodies, removed).
+    """
+    target_norm = normalize_url(target_url)
+    soups = {}
+    matches = []          # (fraction, field, <a> element)
+    offset = 0
+    for field in field_order:
+        html = bodies.get(field, "") or ""
+        if not html.strip():
+            continue
+        soup = BeautifulSoup(html, "html.parser")
+        soups[field] = soup
+        field_text_len = len(soup.get_text(" "))
+        for a in soup.find_all("a", href=True):
+            if normalize_url(a["href"]) != target_norm:
+                continue
+            before = sum(len(s) for s in a.find_all_previous(string=True))
+            matches.append((offset + before, field, a))
+        offset += field_text_len
+    total_len = max(offset, 1)
+    if len(matches) <= keep_n:
+        return bodies, 0
+    if keep_n <= 0:
+        keep_set = set()
+    else:
+        fractions = [(pos / total_len, i) for i, (pos, _f, _a) in enumerate(matches)]
+        keep_set = set()
+        for k in range(keep_n):
+            center = (k + 0.5) / keep_n
+            best = min((abs(frac - center), i) for frac, i in fractions
+                       if i not in keep_set)
+            keep_set.add(best[1])
+    removed = 0
+    for i, (_pos, field, a) in enumerate(matches):
+        if i in keep_set:
+            continue
+        _remove_a(a)
+        removed += 1
+    new_bodies = dict(bodies)
+    for field, soup in soups.items():
+        new_bodies[field] = str(soup)
+    return new_bodies, removed

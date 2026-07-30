@@ -185,19 +185,29 @@ def apply_to_item(item, source_rows, t0_pages, anchor_library, used_anchors, dry
         tgt_norm = tgt_url.rstrip("/")
         return sum(1 for l in _extract_links(html) if l["href"] == tgt_norm)
 
+    from lib.link_utils import remove_duplicate_links_spaced
+
     all_dup_targets = dup_kills["target_url"].unique()
     for tgt in all_dup_targets:
-        base_keep = CTA_MAX_PER_POST if tgt in t0_pages else DEFAULT_MAX_PER_POST
-        kept_so_far = 0
-        for field in BLOG_BODY_FIELDS:
-            if field not in bodies:
-                continue
-            keep_n = max(0, base_keep - kept_so_far)
-            new_html, n = remove_duplicate_links(bodies[field], tgt, keep_n=keep_n)
-            if n > 0:
-                bodies[field] = new_html
-                kills_done += n
-            kept_so_far += _links_to(bodies[field], tgt)
+        if tgt in t0_pages:
+            # T0/CTA: keep the best-SPACED 2 across the whole post, not the
+            # first 2 (which bunch in the article's top 10-15%).
+            bodies, n = remove_duplicate_links_spaced(
+                bodies, tgt, keep_n=CTA_MAX_PER_POST,
+                field_order=tuple(BLOG_BODY_FIELDS))
+            kills_done += n
+        else:
+            # non-T0: first-link rule, allowance consumed across fields
+            kept_so_far = 0
+            for field in BLOG_BODY_FIELDS:
+                if field not in bodies:
+                    continue
+                keep_n = max(0, DEFAULT_MAX_PER_POST - kept_so_far)
+                new_html, n = remove_duplicate_links(bodies[field], tgt, keep_n=keep_n)
+                if n > 0:
+                    bodies[field] = new_html
+                    kills_done += n
+                kept_so_far += _links_to(bodies[field], tgt)
 
     # Singleton KILLs (reverse-waterfall, unknown, etc): unwrap the specific link
     for _, row in other_kills.iterrows():

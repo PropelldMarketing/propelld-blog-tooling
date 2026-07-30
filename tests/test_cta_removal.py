@@ -98,3 +98,50 @@ def test_keep_n_is_per_post_across_both_fields():
                      if l["href"] == "/site/lp/x")
     assert total_left == 2, f"expected 2 across post, got {total_left}"
     assert removed == 3
+
+
+# ---- spacing-aware CTA selection (31-Jul feedback: kept CTAs bunched at top) ----
+
+from lib.link_utils import remove_duplicate_links_spaced
+
+
+def _long_post_with_ctas():
+    filler = "<p>" + ("Body paragraph with enough words to matter here. " * 8) + "</p>"
+    cta = '<p><strong><a href="/site/lp/x">CTA {n} - Apply Now with Propelld!</a></strong></p>'
+    first = (filler + cta.format(n=1) + cta.format(n=2) +           # top-bunched
+             filler * 6 + cta.format(n=3) + filler * 3)             # one mid
+    second = (filler * 3 + cta.format(n=4) + filler * 2)            # one deep
+    return {"post-body": first, "post-body-2nd-half": second}
+
+
+def test_spaced_selection_keeps_early_and_deep_not_first_two():
+    bodies, removed = remove_duplicate_links_spaced(
+        _long_post_with_ctas(), "/site/lp/x", keep_n=2)
+    assert removed == 2
+    combined = bodies["post-body"] + bodies["post-body-2nd-half"]
+    kept = [n for n in (1, 2, 3, 4) if f"CTA {n} " in combined]
+    assert len(kept) == 2
+    assert 4 in kept, f"deep CTA must survive, kept={kept}"      # ~75% slot
+    assert kept != [1, 2], "must not keep the top-bunched pair"
+    # removed CTA banners leave no dead text
+    for n in (1, 2, 3, 4):
+        if n not in kept:
+            assert f"CTA {n} " not in combined
+
+
+def test_spaced_selection_all_top_keeps_two_gracefully():
+    filler = "<p>" + ("words " * 40) + "</p>"
+    cta = '<p><a href="/site/lp/x">CTA {n} Apply Now with Propelld today!</a></p>'
+    bodies = {"post-body": cta.format(n=1) + cta.format(n=2) + cta.format(n=3) + filler * 10,
+              "post-body-2nd-half": ""}
+    bodies, removed = remove_duplicate_links_spaced(bodies, "/site/lp/x", keep_n=2)
+    assert removed == 1
+    assert sum(f"CTA {n} " in bodies["post-body"] for n in (1, 2, 3)) == 2
+
+
+def test_spaced_selection_noop_when_at_or_under_cap():
+    bodies = {"post-body": '<p>a <a href="/site/lp/x">one</a> b</p>'
+              '<p>c <a href="/site/lp/x">two</a> d</p>', "post-body-2nd-half": ""}
+    out, removed = remove_duplicate_links_spaced(bodies, "/site/lp/x", keep_n=2)
+    assert removed == 0
+    assert out["post-body"] == bodies["post-body"]
