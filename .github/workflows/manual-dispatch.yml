@@ -16,6 +16,7 @@ on:
           # Refiners (produce CSVs for review, no site changes)
           - link_recommender
           - generate_anchor_variants
+          - triage_review_links
           - anchor_refiner
           - refine_audit_rewrites
           - preview_link_insertions
@@ -42,9 +43,14 @@ on:
         description: 'Extra CLI args to pass to the script (optional)'
         required: false
         type: string
+      snapshot_run_id:
+        description: 'Run ID of a previous run whose snapshot artifact to restore into the workspace (for rollback - find it in the run URL)'
+        required: false
+        type: string
 
 permissions:
   contents: write
+  actions: read
 
 jobs:
   run:
@@ -59,6 +65,20 @@ jobs:
 
       - name: Install deps
         run: pip install -r requirements.txt
+
+      - name: Restore snapshot artifact from previous run (optional)
+        if: inputs.snapshot_run_id != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Downloading artifacts of run ${{ inputs.snapshot_run_id }}..."
+          gh run download ${{ inputs.snapshot_run_id }} --repo ${{ github.repository }} --dir _restore
+          mkdir -p snapshots restore-log
+          # artifact layout: _restore/<artifact-name>/{snapshots,out}/...
+          cp -r _restore/*/snapshots/* snapshots/ 2>/dev/null || true
+          cp -r _restore/*/out/* restore-log/ 2>/dev/null || true
+          echo "Restored snapshot folders:"; ls snapshots/
+          echo "Restored logs:"; ls restore-log/ || true
 
       - name: Run ${{ inputs.script }}
         env:
