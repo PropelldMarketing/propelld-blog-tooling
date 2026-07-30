@@ -175,17 +175,29 @@ def apply_to_item(item, source_rows, t0_pages, anchor_library, used_anchors, dry
     dup_kills = kills[kills["reason"] == "duplicate-target"]
     other_kills = kills[kills["reason"] != "duplicate-target"]
 
-    for field in BLOG_BODY_FIELDS:
-        if field not in bodies:
-            continue
-        # Targets that have duplicate-target KILL rows in THIS field
-        dup_in_field = dup_kills[dup_kills["source_body_field"] == field]
-        for tgt in dup_in_field["target_url"].unique():
-            keep_n = CTA_MAX_PER_POST if tgt in t0_pages else DEFAULT_MAX_PER_POST
+    # The keep-N policy is PER POST, not per field: a target's allowance is
+    # consumed by links kept in earlier fields (post-body first). Without
+    # this, a post with LP links in both halves kept 2+2=4 CTAs (found in
+    # the 30-Jul canary: 179 planned kills, 162 done).
+    from lib.link_utils import extract_links as _extract_links
+
+    def _links_to(html, tgt_url):
+        tgt_norm = tgt_url.rstrip("/")
+        return sum(1 for l in _extract_links(html) if l["href"] == tgt_norm)
+
+    all_dup_targets = dup_kills["target_url"].unique()
+    for tgt in all_dup_targets:
+        base_keep = CTA_MAX_PER_POST if tgt in t0_pages else DEFAULT_MAX_PER_POST
+        kept_so_far = 0
+        for field in BLOG_BODY_FIELDS:
+            if field not in bodies:
+                continue
+            keep_n = max(0, base_keep - kept_so_far)
             new_html, n = remove_duplicate_links(bodies[field], tgt, keep_n=keep_n)
             if n > 0:
                 bodies[field] = new_html
                 kills_done += n
+            kept_so_far += _links_to(bodies[field], tgt)
 
     # Singleton KILLs (reverse-waterfall, unknown, etc): unwrap the specific link
     for _, row in other_kills.iterrows():

@@ -72,3 +72,29 @@ def test_publish_flags_exist():
     for script in ["bulk_apply_audit.py", "insert_planned_links.py"]:
         src = (REPO / "scripts" / script).read_text()
         assert "--no-publish" in src and "publish_items" in src, script
+
+
+def test_keep_n_is_per_post_across_both_fields():
+    """30-Jul canary finding: keep-2 was applied per field, letting posts
+    with CTAs in both halves keep 4. The cap must span fields."""
+    from lib.link_utils import remove_duplicate_links, extract_links
+    first = ('<p>Intro text.</p>'
+             '<p>a <a href="/site/lp/x">one</a> b</p>'
+             '<p>c <a href="/site/lp/x">two</a> d</p>'
+             '<p>e <a href="/site/lp/x">three</a> f</p>')
+    second = ('<p>g <a href="/site/lp/x">four</a> h</p>'
+              '<p>i <a href="/site/lp/x">five</a> j</p>')
+    bodies = {"post-body": first, "post-body-2nd-half": second}
+    base_keep, kept_so_far, removed = 2, 0, 0
+    for field in ["post-body", "post-body-2nd-half"]:
+        keep_n = max(0, base_keep - kept_so_far)
+        new_html, n = remove_duplicate_links(bodies[field], "/site/lp/x", keep_n=keep_n)
+        if n:
+            bodies[field] = new_html
+        removed += n
+        kept_so_far += sum(1 for l in extract_links(bodies[field])
+                           if l["href"] == "/site/lp/x")
+    total_left = sum(1 for f in bodies.values() for l in extract_links(f)
+                     if l["href"] == "/site/lp/x")
+    assert total_left == 2, f"expected 2 across post, got {total_left}"
+    assert removed == 3
