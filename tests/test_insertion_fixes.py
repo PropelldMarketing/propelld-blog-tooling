@@ -161,10 +161,10 @@ def test_non_t0_duplicates_still_killed_keeping_first():
     assert (df[df["source_url"] == "/site/blog/p2"]["action"] == "KEEP").all()
 
 
-def test_t0_total_cap_across_distinct_targets():
-    """A post linking to 3 DIFFERENT money pages must lose the 3rd
-    (first 2 by position kept). Found 24-Jul: 244 such links escaped
-    the same-target duplicate rule."""
+def test_distinct_money_page_links_are_kept():
+    """Policy (31-Jul): links to DIFFERENT money pages all stay, in any
+    count — only same-target repeats are capped. Reverses the earlier
+    t0-cta-overflow rule per marketing's decision."""
     df = _df([
         ("/site/blog/p1", "/site/education-loan", 0, "KEEP", "compliant"),
         ("/site/blog/p1", "/site/college-loan", 4, "KEEP", "compliant"),
@@ -173,7 +173,5 @@ def test_t0_total_cap_across_distinct_targets():
     ])
     t0 = ["/site/education-loan", "/site/college-loan", "/site/mba-education-loan"]
     out, dups = mark_duplicate_kills(df, t0, t0_allowance=2)
-    killed = out[out["action"] == "KILL"]
-    assert list(killed["target_url"]) == ["/site/mba-education-loan"]
-    assert list(killed["reason"]) == ["t0-cta-overflow"]
-    assert (out[out["target_url"] == "/site/blog/normal-post"]["action"] == "KEEP").all()
+    assert (out["action"] == "KEEP").all()
+    assert dups.sum() == 0
