@@ -101,7 +101,9 @@ def pick_replacement_anchor(target_url, library, used_counter):
 def load_audit(path):
     df = pd.read_csv(path) if path.endswith(".csv") else pd.read_excel(path)
     df["source_url"] = df["source_url"].str.rstrip("/")
-    df["target_url"] = df["target_url"].str.rstrip("/")
+    # rstrip turns the site root "/" into "" which matches nothing —
+    # 5 homepage-target rows were silently skipped in the 03-Aug run
+    df["target_url"] = df["target_url"].str.rstrip("/").replace("", "/")
     return df
 
 
