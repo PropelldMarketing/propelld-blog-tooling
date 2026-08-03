@@ -136,7 +136,11 @@ def apply_to_item(item, source_rows, t0_pages, anchor_library, used_anchors, dry
             skipped += 1
             continue
         tgt = row["target_url"]
-        old_anchor = str(row.get("anchor_text", "")).strip() or None
+        _ra = row.get("anchor_text", "")
+        if pd.isna(_ra):
+            old_anchor = ""   # match links with EMPTY anchor text precisely
+        else:
+            old_anchor = str(_ra).strip() or None
 
         refined_action = str(row.get("refined_action", "")).strip().lower() if "refined_action" in row.index else ""
         refined_anchor_val = row.get("refined_anchor") if "refined_anchor" in row.index else None
@@ -216,7 +220,11 @@ def apply_to_item(item, source_rows, t0_pages, anchor_library, used_anchors, dry
             skipped += 1
             continue
         tgt = row["target_url"]
-        old_anchor = str(row.get("anchor_text", "")).strip() or None
+        _ra = row.get("anchor_text", "")
+        if pd.isna(_ra):
+            old_anchor = ""
+        else:
+            old_anchor = str(_ra).strip() or None
         new_html, n = remove_link(bodies[field], tgt, anchor_text=old_anchor)
         if n > 0:
             bodies[field] = new_html
