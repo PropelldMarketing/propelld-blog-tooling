@@ -52,7 +52,9 @@ import math
 import random
 import re
 import sys
+import threading
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import pandas as pd
@@ -540,12 +542,29 @@ class Allocator:
             self.anchor_counts[k] = max(0, self.anchor_counts.get(k, 0) - 1)
 
 
-def allocate(wrap_edges, bridge_edges, grammar, t0_pages):
+def allocate(wrap_edges, bridge_edges, grammar, t0_pages, resumed_rows=None):
     """Select final edges. Wraps first (free quality), then bridges by
     relevance, but only up to PER_POST_TARGET per post via bridges — the
     last slot up to PER_POST_MAX is reserved for wraps, which are always
-    worth taking."""
+    worth taking.
+
+    resumed_rows: plan rows carried over from an interrupted run; their
+    insertions are replayed into the allocator FIRST so global caps
+    (target budgets, anchor variety, per-post limits) hold across resumes."""
     alloc = Allocator(grammar, t0_pages)
+    for r in (resumed_rows or []):
+        if r.get("action") != "insert":
+            continue
+        t = str(r.get("target_url", "")).rstrip("/")
+        s = str(r.get("source_url", "")).rstrip("/")
+        alloc.per_post[s] = alloc.per_post.get(s, 0) + 1
+        if t in alloc.t0:
+            alloc.per_post_t0[s] = alloc.per_post_t0.get(s, 0) + 1
+        alloc.target_inbound[t] = alloc.target_inbound.get(t, 0) + 1
+        anc = str(r.get("anchor", "") or "").lower()
+        if anc and anc != "nan":
+            k = (t, anc)
+            alloc.anchor_counts[k] = alloc.anchor_counts.get(k, 0) + 1
     chosen_wraps, chosen_bridges = [], []
     for e in sorted(wrap_edges, key=lambda x: -x["relevance"]):
         if alloc.can_take(e, e["anchor"]):
@@ -719,6 +738,12 @@ def main():
     p.add_argument("--sleep", type=float, default=0.2)
     p.add_argument("--model", default=MODEL)
     p.add_argument("--candidates", type=int, default=CANDIDATE_POOL)
+    p.add_argument("--workers", type=int, default=4,
+                   help="Parallel LLM calls (default 4); state mutations are locked")
+    p.add_argument("--resume", default=None,
+                   help="Path to a previous partial insertion-plans CSV; its "
+                        "sources are carried forward and skipped. Use with the "
+                        "snapshot_run_id workflow input: restore-log/insertion-plans.csv")
     p.add_argument("--no-llm", action="store_true",
                    help="Wrap-scan + allocation only; skip bridge writing ($0)")
     p.add_argument("--dry-run", action="store_true")
@@ -738,8 +763,21 @@ def main():
     print(f"  {len(tier_map)} posts | {len(t0_pages)} T0 pages | "
           f"{len(anchor_lib)} anchor-library destinations")
 
+    resumed_rows, done_sources = [], set()
+    if a.resume:
+        try:
+            prev = pd.read_csv(a.resume)
+            resumed_rows = prev.to_dict("records")
+            done_sources = set(prev["source_url"].dropna().astype(str).str.rstrip("/"))
+            print(f"--resume: carrying {len(resumed_rows)} rows from "
+                  f"{len(done_sources)} completed sources")
+        except Exception as e:
+            print(f"--resume: could not load {a.resume}: {e}")
+            sys.exit(1)
+
     sources = [(u, m) for u, m in tier_map.items()
-               if u.startswith("/site/blog/") and str(m.get("tier")) != "T0"]
+               if u.startswith("/site/blog/") and str(m.get("tier")) != "T0"
+               and u.rstrip("/") not in done_sources]
     if a.limit > 0:
         random.seed(42)
         by_tier = {}
@@ -819,10 +857,19 @@ def main():
 
     # -------- Pass 2: global allocation --------
     chosen_wraps, chosen_bridges, alloc = allocate(wrap_edges, bridge_edges,
-                                                   grammar, t0_pages)
+                                                   grammar, t0_pages,
+                                                   resumed_rows=resumed_rows)
     print(f"Allocated: {len(chosen_wraps)} wraps + {len(chosen_bridges)} bridge slots")
 
-    plans = list(status_rows)
+    plans = list(resumed_rows) + list(status_rows)
+    _ckpt_lock = threading.Lock()
+
+    def checkpoint():
+        """Flush current plans to the output CSV so a job timeout or crash
+        never loses paid work (04-Aug lesson: 1h GHA limit ate a full run)."""
+        Path(a.output).parent.mkdir(parents=True, exist_ok=True)
+        pd.DataFrame(plans).to_csv(a.output, index=False)
+
     for e in chosen_wraps:
         plans.append({"source_url": e["source_url"],
                       "source_slug": source_ctx[e["source_url"]]["slug"],
@@ -835,6 +882,8 @@ def main():
                       "status": "planned"})
 
     # -------- Pass 3: LLM bridge writing --------
+    checkpoint()   # wraps + carried rows safe on disk before any LLM spend
+
     by_source = {}
     for e in chosen_bridges:
         by_source.setdefault(e["source_url"], []).append(e)
@@ -863,69 +912,77 @@ def main():
         ac = anthropic.Anthropic()
         refused = {}   # source_url -> set(target_url) the model skipped/failed
 
-        def run_bridge_wave(by_source, wave):
-            for i, (su, targets) in enumerate(by_source.items()):
-                ctx = source_ctx[su]
-                para_by_label = {r["label"]: r for r in ctx["para_records"]}
-                allowed = {e["target_url"] for e in targets}
-                titles = {e["target_url"]: e.get("target_title", "") for e in targets}
-                edge_by_target = {e["target_url"]: e for e in targets}
-                settled = set()
+        STATE_LOCK = threading.Lock()
 
-                def handle(decisions, failures):
-                    for d in decisions:
-                        tgt = normalize_url(str(d.get("target_url", "")))
-                        if tgt in settled:
-                            continue
-                        ok, why, d = validate_bridge_decision(
-                            d, para_by_label, allowed, alloc, su,
-                            target_titles=titles)
-                        if ok:
-                            alloc.used_paras.add((su, d["_field"], d["_pidx"]))
-                            k = (tgt, d["anchor"].lower())
-                            alloc.anchor_counts[k] = alloc.anchor_counts.get(k, 0) + 1
-                            settled.add(tgt)
-                            plans.append({"source_url": su, "source_slug": ctx["slug"],
-                                          "field": d["_field"],
-                                          "paragraph_idx": d["_pidx"],
-                                          "target_url": tgt, "action": "insert",
-                                          "insertion_type": "bridge",
-                                          "anchor": d["anchor"],
-                                          "original_sentence": d["original_sentence"],
-                                          "new_sentence": d["new_sentence"],
-                                          "reasoning": d.get("reasoning", ""),
-                                          "validation_error": "",
-                                          "status": "planned"})
-                        elif why not in ("skip",) and d.get("action") == "insert":
-                            failures.append({"target_url": tgt, "why": why,
-                                             "original_sentence":
-                                                 str(d.get("original_sentence", ""))[:200],
-                                             "new_sentence":
-                                                 str(d.get("new_sentence", ""))[:200]})
-                        else:
-                            refused.setdefault(su, set()).add(tgt)
-                            plans.append({"source_url": su, "source_slug": ctx["slug"],
-                                          "target_url": tgt, "action": "skip",
-                                          "insertion_type": "bridge",
-                                          "reasoning": str(d.get("reasoning", ""))[:200],
-                                          "validation_error": "",
-                                          "status": "llm-skipped"})
+        def process_one_source(su, targets, wave):
+            """One source's bridge writing. API calls run in parallel across
+            sources; every read/write of shared state (alloc, plans, refused)
+            happens under STATE_LOCK. Checkpoints the CSV when done."""
+            ctx = source_ctx[su]
+            para_by_label = {r["label"]: r for r in ctx["para_records"]}
+            allowed = {e["target_url"] for e in targets}
+            titles = {e["target_url"]: e.get("target_title", "") for e in targets}
+            settled = set()
 
-                try:
-                    prompt = build_bridge_prompt(su, ctx["meta"].get("title", ""),
-                                                 ctx["meta"].get("category", ""),
-                                                 ctx["para_records"], targets)
-                    result = call_llm(ac, prompt, model=a.model)
-                    failures = []
+            def handle(decisions, failures):
+                # caller must hold STATE_LOCK
+                for d in decisions:
+                    tgt = normalize_url(str(d.get("target_url", "")))
+                    if tgt in settled:
+                        continue
+                    ok, why, d = validate_bridge_decision(
+                        d, para_by_label, allowed, alloc, su,
+                        target_titles=titles)
+                    if ok:
+                        alloc.used_paras.add((su, d["_field"], d["_pidx"]))
+                        k = (tgt, d["anchor"].lower())
+                        alloc.anchor_counts[k] = alloc.anchor_counts.get(k, 0) + 1
+                        settled.add(tgt)
+                        plans.append({"source_url": su, "source_slug": ctx["slug"],
+                                      "field": d["_field"],
+                                      "paragraph_idx": d["_pidx"],
+                                      "target_url": tgt, "action": "insert",
+                                      "insertion_type": "bridge",
+                                      "anchor": d["anchor"],
+                                      "original_sentence": d["original_sentence"],
+                                      "new_sentence": d["new_sentence"],
+                                      "reasoning": d.get("reasoning", ""),
+                                      "validation_error": "",
+                                      "status": "planned"})
+                    elif why not in ("skip",) and d.get("action") == "insert":
+                        failures.append({"target_url": tgt, "why": why,
+                                         "original_sentence":
+                                             str(d.get("original_sentence", ""))[:200],
+                                         "new_sentence":
+                                             str(d.get("new_sentence", ""))[:200]})
+                    else:
+                        refused.setdefault(su, set()).add(tgt)
+                        plans.append({"source_url": su, "source_slug": ctx["slug"],
+                                      "target_url": tgt, "action": "skip",
+                                      "insertion_type": "bridge",
+                                      "reasoning": str(d.get("reasoning", ""))[:200],
+                                      "validation_error": "",
+                                      "status": "llm-skipped"})
+
+            try:
+                prompt = build_bridge_prompt(su, ctx["meta"].get("title", ""),
+                                             ctx["meta"].get("category", ""),
+                                             ctx["para_records"], targets)
+                time.sleep(a.sleep)
+                result = call_llm(ac, prompt, model=a.model)     # parallel
+                failures = []
+                with STATE_LOCK:
                     handle(result.get("decisions", []), failures)
-                    if failures:  # one retry with the failure named
-                        retry = call_llm(
-                            ac, prompt + "\n\n" + build_retry_prompt(failures),
-                            model=a.model)
+                if failures:
+                    retry_prompt = prompt + "\n\n" + build_retry_prompt(failures)
+                    retry = call_llm(ac, retry_prompt, model=a.model)  # parallel
+                    with STATE_LOCK:
                         handle(retry.get("decisions", []), [])
-                except Exception as e:
+            except Exception as e:
+                with STATE_LOCK:
                     plans.append({"source_url": su,
                                   "status": f"error: {str(e)[:200]}"})
+            with STATE_LOCK:
                 for e in targets:
                     if e["target_url"] not in settled:
                         alloc.release(e)
@@ -940,9 +997,19 @@ def main():
                                           "reasoning": "",
                                           "validation_error": "dropped: failed validation after retry or no decision returned",
                                           "status": "dropped"})
-                if (i + 1) % 10 == 0:
-                    print(f"  [wave {wave}: {i+1}/{len(by_source)}] bridge calls done")
-                time.sleep(a.sleep)
+                checkpoint()   # survive timeouts: paid work is on disk
+
+        def run_bridge_wave(by_source, wave):
+            items = list(by_source.items())
+            done = 0
+            with ThreadPoolExecutor(max_workers=max(1, a.workers)) as ex:
+                futures = [ex.submit(process_one_source, su, targets, wave)
+                           for su, targets in items]
+                for f in futures:
+                    f.result()
+                    done += 1
+                    if done % 25 == 0:
+                        print(f"  [wave {wave}: {done}/{len(items)}] sources done")
 
         run_bridge_wave(by_source, wave=1)
 
