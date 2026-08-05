@@ -182,6 +182,15 @@ def load_tier_map(path):
     """URL → {tier, category, title}. v5's load_tier_titles dropped the Tier
     column, silently disabling tier weighting — fixed here."""
     df = pd.read_excel(path) if path.endswith(".xlsx") else pd.read_csv(path)
+    # Newly published posts live in tier-map-additions.csv (written by
+    # onboard_new_posts.py) until the next full re-score; merge them in.
+    add_p = Path(__file__).parent.parent / "data" / "tier-map-additions.csv"
+    if add_p.exists():
+        try:
+            add = pd.read_csv(add_p)
+            df = pd.concat([df, add], ignore_index=True)
+        except Exception:
+            pass
     ren = {}
     for old, new in [("URL", "url"), ("Tier", "tier"),
                      ("Category", "category"), ("Title", "title")]:
@@ -740,6 +749,10 @@ def main():
     p.add_argument("--candidates", type=int, default=CANDIDATE_POOL)
     p.add_argument("--workers", type=int, default=4,
                    help="Parallel LLM calls (default 4); state mutations are locked")
+    p.add_argument("--sources-file", default=None,
+                   help="Path to a text file of source URLs (one per line); "
+                        "only these posts are planned. Used by the weekly "
+                        "new-post onboarding cron.")
     p.add_argument("--resume", default=None,
                    help="Path to a previous partial insertion-plans CSV; its "
                         "sources are carried forward and skipped. Use with the "
@@ -778,6 +791,11 @@ def main():
     sources = [(u, m) for u, m in tier_map.items()
                if u.startswith("/site/blog/") and str(m.get("tier")) != "T0"
                and u.rstrip("/") not in done_sources]
+    if a.sources_file:
+        want = {l.strip().rstrip("/") for l in open(a.sources_file)
+                if l.strip()}
+        sources = [(u, m) for u, m in sources if u.rstrip("/") in want]
+        print(f"--sources-file: restricted to {len(sources)} sources")
     if a.limit > 0:
         random.seed(42)
         by_tier = {}
