@@ -1,0 +1,99 @@
+name: Weekly automation
+
+on:
+  schedule:
+    # Mondays 03:00 UTC (08:30 IST) - link health report
+    - cron: '0 3 * * 1'
+    # Thursdays 03:00 UTC - new-post onboarding + auto-linking
+    - cron: '0 3 * * 4'
+  workflow_dispatch:
+    inputs:
+      job:
+        description: 'Which job to run manually'
+        required: true
+        type: choice
+        options: [health-report, onboard-new-posts]
+
+permissions:
+  contents: write
+
+jobs:
+  health-report:
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '0 3 * * 1') ||
+      (github.event_name == 'workflow_dispatch' && inputs.job == 'health-report')
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.txt
+      - name: Weekly link health report
+        env:
+          WEBFLOW_API_TOKEN: ${{ secrets.WEBFLOW_API_TOKEN }}
+          AHREFS_API_TOKEN: ${{ secrets.AHREFS_API_TOKEN }}
+        run: python scripts/link_health_report.py --apply
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: link-health-${{ github.run_id }}
+          path: out/
+          retention-days: 90
+
+  onboard-new-posts:
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '0 3 * * 4') ||
+      (github.event_name == 'workflow_dispatch' && inputs.job == 'onboard-new-posts')
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.txt
+
+      - name: Detect and register new posts
+        env:
+          WEBFLOW_API_TOKEN: ${{ secrets.WEBFLOW_API_TOKEN }}
+        run: python scripts/onboard_new_posts.py --apply
+
+      - name: Plan links for new posts only
+        env:
+          WEBFLOW_API_TOKEN: ${{ secrets.WEBFLOW_API_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -s out/new-posts.txt ]; then
+            python scripts/plan_insertions.py --apply --sources-file out/new-posts.txt --output out/insertion-plans.csv
+          else
+            echo "No new posts this week."
+          fi
+
+      - name: Apply and publish
+        env:
+          WEBFLOW_API_TOKEN: ${{ secrets.WEBFLOW_API_TOKEN }}
+        run: |
+          if [ -s out/new-posts.txt ]; then
+            python scripts/insert_planned_links.py --apply --plans out/insertion-plans.csv
+          else
+            echo "Nothing to apply."
+          fi
+
+      - name: Commit new-post registry back to repo
+        run: |
+          if [ -n "$(git status --porcelain data/tier-map-additions.csv)" ]; then
+            git config user.name "github-actions[bot]"
+            git config user.email "github-actions[bot]@users.noreply.github.com"
+            git add data/tier-map-additions.csv
+            git commit -m "Auto-register new posts (${{ github.run_id }})"
+            git push
+          fi
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: onboarding-${{ github.run_id }}
+          path: |
+            out/
+            snapshots/
+          retention-days: 90
