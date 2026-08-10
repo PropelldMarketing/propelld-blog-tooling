@@ -51,17 +51,28 @@ def restore_cells(live_html, snap_html):
                 notes.append(f"table{ti}r{ri}: cell-count changed, skipped")
                 continue
             for ci, (lcell, scell) in enumerate(zip(lc, sc)):
-                if lcell.get_text(strip=True):
-                    continue                      # live cell has content: never touch
                 stext = scell.get_text(" ", strip=True)
                 if not stext:
                     continue                      # was empty before too
-                # restore as plain text inside the cell's paragraph if present
-                para = lcell.find("p")
-                if para is not None:
-                    para.string = stext
-                else:
-                    lcell.string = stext
+                ltext = lcell.get_text(" ", strip=True)
+                # Full-restore policy (07-Aug): bring back the ORIGINAL cell
+                # content including its link. Eligible cells are those the
+                # bug touched: now empty, or plain-text-restored earlier
+                # (same text, no link). Any other live content: never touch.
+                if lcell.find("a") is not None:
+                    continue
+                norm = lambda s: " ".join(str(s).split()).lower()
+                if ltext and norm(ltext) != norm(stext):
+                    continue
+                if not scell.find("a") and not ltext:
+                    # plain-text cell wiped: restore text only
+                    pass
+                elif not scell.find("a"):
+                    continue                      # already identical plain text
+                lcell.clear()
+                frag = BeautifulSoup(scell.decode_contents(), "html.parser")
+                for ch in list(frag.contents):
+                    lcell.append(ch)
                 restored += 1
     return str(live), restored, notes
 

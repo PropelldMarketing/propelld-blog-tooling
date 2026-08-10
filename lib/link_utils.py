@@ -247,8 +247,13 @@ def remove_duplicate_links(html: str, target_url: str, keep_n: int = 1) -> tuple
         return html, 0
     soup = BeautifulSoup(html, "html.parser")
     target_norm = normalize_url(target_url)
+    # Links inside table cells are navigational (comparison tables linking
+    # each entity to its page) — they neither count toward the duplicate
+    # allowance nor get removed. Policy decision 07-Aug after the table-cell
+    # incident: tables are navigation, not prose.
     matches = [a for a in soup.find_all("a", href=True)
-               if normalize_url(a["href"]) == target_norm]
+               if normalize_url(a["href"]) == target_norm
+               and a.find_parent(["td", "th"]) is None]
     if len(matches) <= keep_n:
         return html, 0
     removed = 0
@@ -315,6 +320,8 @@ def remove_duplicate_links_spaced(bodies, target_url, keep_n=2,
         for a in soup.find_all("a", href=True):
             if normalize_url(a["href"]) != target_norm:
                 continue
+            if a.find_parent(["td", "th"]) is not None:
+                continue  # table links: navigational, exempt (07-Aug policy)
             before = sum(len(s) for s in a.find_all_previous(string=True))
             matches.append((offset + before, field, a))
         offset += field_text_len

@@ -159,3 +159,15 @@ def test_table_cell_link_unwraps_never_decomposes():
     assert "Credila" in out            # text survives
     assert "<a" not in out             # link gone
     assert "80 Lakhs" in out
+
+
+def test_table_links_exempt_from_duplicate_removal():
+    """07-Aug policy: comparison-table links are navigation, not prose dups."""
+    from lib.link_utils import remove_duplicate_links
+    html = ('<p>See <a href="/site/blog/x">first mention</a> in prose with plenty of surrounding words.</p>'
+            '<p>There is also a <a href="/site/blog/x">second prose dup</a> right here in another long sentence.</p>'
+            '<table><tr><td><p><a href="/site/blog/x">Table Entry</a></p></td></tr></table>')
+    out, n = remove_duplicate_links(html, "/site/blog/x", keep_n=1)
+    assert n == 1                       # only the prose dup removed
+    assert out.count("<a") == 2         # first prose + table link survive
+    assert "second prose dup" in out    # unwrapped, text kept
