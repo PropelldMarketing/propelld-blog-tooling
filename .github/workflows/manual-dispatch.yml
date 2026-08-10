@@ -32,6 +32,7 @@ on:
           - snapshot
           - publish_facet_items
           # Rollback / recovery
+          - repair_table_cells
           - rollback
           - rollback_audit_rewrites
       apply:
