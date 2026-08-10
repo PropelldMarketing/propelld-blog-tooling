@@ -145,3 +145,17 @@ def test_spaced_selection_noop_when_at_or_under_cap():
     out, removed = remove_duplicate_links_spaced(bodies, "/site/lp/x", keep_n=2)
     assert removed == 0
     assert out["post-body"] == bodies["post-body"]
+
+
+
+def test_table_cell_link_unwraps_never_decomposes():
+    """06-Aug regression: link-only <td><p><a>Name</a></p></td> cells were
+    decomposed as CTA blocks, wiping table labels (nbfc-education-loan)."""
+    html = ('<table><tr>'
+            '<td><p><a href="/site/blog/hdfc-credila-education-loan">Credila</a></p></td>'
+            '<td><p>Up to ₹80 Lakhs</p></td></tr></table>')
+    out, n = remove_link(html, "/site/blog/hdfc-credila-education-loan")
+    assert n == 1
+    assert "Credila" in out            # text survives
+    assert "<a" not in out             # link gone
+    assert "80 Lakhs" in out

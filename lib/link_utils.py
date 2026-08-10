@@ -177,6 +177,12 @@ def _link_only_block(a):
     a_text = a.get_text(" ", strip=True)
     if not a_text:
         return None
+    # NEVER decompose inside a table cell: Webflow wraps cell content in <p>,
+    # so a linked name cell ("<td><p><a>Credila</a></p></td>") looks exactly
+    # like a CTA banner. Killing the link must keep the cell's text.
+    # (Found 06-Aug: bank/college-name cells wiped across comparison tables.)
+    if a.find_parent(["td", "th"]) is not None:
+        return None
     best = None
     parent = a.parent
     while parent is not None and getattr(parent, "name", None) in (BLOCK_TAGS | _INLINE_WRAPPERS):
