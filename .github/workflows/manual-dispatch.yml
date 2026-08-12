@@ -13,6 +13,11 @@ on:
           - check_url_health
           - check_facet_content
           - link_health_report
+          # Freshness pipeline (scan/preview read-only; plan spends LLM with apply; apply writes)
+          - freshness_scan
+          - freshness_plan
+          - freshness_preview
+          - freshness_apply
           # Refiners (produce CSVs for review, no site changes)
           - link_recommender
           - generate_anchor_variants
@@ -20,11 +25,11 @@ on:
           - anchor_refiner
           - refine_audit_rewrites
           - preview_link_insertions
-          - insert_planned_links
           - preview_insertion_plans
           - plan_insertions
           - priority_scorer
           # Direct writes to Webflow (require snapshot + --apply)
+          - insert_planned_links
           - bulk_apply_audit
           - bulk_apply_links
           - refresh_hub_data
@@ -52,6 +57,10 @@ on:
 permissions:
   contents: write
   actions: read
+
+concurrency:
+  group: webflow-writes
+  cancel-in-progress: false
 
 jobs:
   run:
