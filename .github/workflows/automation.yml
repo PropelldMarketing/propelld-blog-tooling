@@ -6,13 +6,15 @@ on:
     - cron: '0 3 * * 1'
     # Thursdays 03:00 UTC - new-post onboarding + auto-linking
     - cron: '0 3 * * 4'
+    # 5th of each month 02:00 UTC - blog freshness cycle (pilot: Exams & Counselling)
+    - cron: '0 2 5 * *'
   workflow_dispatch:
     inputs:
       job:
         description: 'Which job to run manually'
         required: true
         type: choice
-        options: [health-report, onboard-new-posts]
+        options: [health-report, onboard-new-posts, freshness-cycle]
 
 permissions:
   contents: write
@@ -47,6 +49,9 @@ jobs:
       (github.event_name == 'workflow_dispatch' && inputs.job == 'onboard-new-posts')
     runs-on: ubuntu-latest
     timeout-minutes: 120
+    concurrency:
+      group: webflow-writes
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -93,6 +98,51 @@ jobs:
         if: always()
         with:
           name: onboarding-${{ github.run_id }}
+          path: |
+            out/
+            snapshots/
+          retention-days: 90
+
+  freshness-cycle:
+    if: >-
+      (github.event_name == 'schedule' && github.event.schedule == '0 2 5 * *') ||
+      (github.event_name == 'workflow_dispatch' && inputs.job == 'freshness-cycle')
+    runs-on: ubuntu-latest
+    timeout-minutes: 300
+    concurrency:
+      group: webflow-writes
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.11' }
+      - run: pip install -r requirements.txt
+
+      - name: Scan for staleness candidates (deterministic, $0)
+        env:
+          WEBFLOW_API_TOKEN: ${{ secrets.WEBFLOW_API_TOKEN }}
+        run: python scripts/freshness_scan.py --category "Exams & Counselling"
+
+      - name: Plan patches with source evidence (LLM, budget-capped)
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python scripts/freshness_plan.py --apply --max-llm-calls 400 --max-fetches 150
+
+      - name: Build review preview + queue CSV
+        run: python scripts/freshness_preview.py
+
+      - name: Auto-apply Lane A + HIGH confidence, publish, reconcile
+        env:
+          WEBFLOW_API_TOKEN: ${{ secrets.WEBFLOW_API_TOKEN }}
+        run: python scripts/freshness_apply.py --apply
+        # Owner policy 2026-08-12: Lane A + HIGH auto-apply (reasoning recorded
+        # per change); MEDIUM/LOW land in out/freshness-review.csv for review.
+        # To pause all auto-applies, add --queue-all here.
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: freshness-${{ github.run_id }}
           path: |
             out/
             snapshots/
