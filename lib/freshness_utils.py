@@ -35,7 +35,7 @@ SESSION_RE = re.compile(r"\b(20\d{2})\s*[-–—]\s*((?:20)?\d{2})\b")
 DATE_RE = re.compile(
     r"\b(?:\d{1,2}(?:st|nd|rd|th)?\s+%s,?\s+20\d{2}|%s\s+\d{1,2}(?:st|nd|rd|th)?,?\s+20\d{2})\b"
     % (MONTH_RE, MONTH_RE))
-FEE_RE = re.compile(r"(?:₹|Rs\.?|INR)\s?[\d,]+(?:\.\d+)?", re.I)
+FEE_RE = re.compile(r"(?:₹|Rs\.?|INR)\s?\d[\d,]*(?:\.\d+)?", re.I)
 REG_PHRASE_RE = re.compile(
     r"\b(registrations?|applications?)\s+(?:is|are|will\s+be|now)?\s*"
     r"(open|closed|ongoing|live|started|closing)\b", re.I)
@@ -205,9 +205,25 @@ def classify_lane(cand, rules, today=None):
             return "IGNORE", "historical reference (marker word near old year)"
         return "LLM", "old year, framing unclear"
 
-    # Dates, fees, registration phrases, sessions: factual -> B (evidence).
-    if cand["claim_type"] in ("date", "numeric_date", "fee",
-                              "registration_phrase", "session_range"):
+    # Dates in the future are not stale (2026-08 triage refinement: the
+    # first live scan queued thousands of forward-looking dates).
+    if cand["claim_type"] in ("date", "numeric_date"):
+        ctx_years = _years_in(cand["matched_text"])
+        if ctx_years and max(ctx_years) > today.year:
+            return "IGNORE", "date is in the future"
+        return "B", "date claim, verify against source"
+
+    # A bare fee amount carries NO staleness signal by itself; without a
+    # non-current year nearby it just spams the queue as unverifiable
+    # (5,651 such rows in the first live scan). Old year nearby -> verify.
+    if cand["claim_type"] == "fee":
+        ctx_years = _years_in(cand["context"])
+        if ctx_years and min(ctx_years) < today.year:
+            return "B", "fee near old year, verify against source"
+        return "IGNORE", ("fee near current/future year only" if ctx_years
+                          else "fee without staleness signal (no year in context)")
+
+    if cand["claim_type"] in ("registration_phrase", "session_range"):
         past = years and max(years) < today.year
         return "B", ("stale-shaped factual claim" if past
                      else "factual claim, verify against source")

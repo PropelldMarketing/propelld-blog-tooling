@@ -84,10 +84,42 @@ def test_ambiguous_old_year_goes_to_llm():
 
 
 def test_factual_claims_go_to_lane_b():
-    for ct, txt in [("date", "15 March 2025"), ("fee", "₹1,000"),
+    for ct, txt in [("date", "15 March 2025"),
                     ("registration_phrase", "registration is open")]:
         lane, _ = classify_lane(_cand(ct, txt, "x %s y" % txt), RULES, TODAY)
         assert lane == "B", ct
+
+
+def test_future_date_ignored():
+    lane, reason = classify_lane(
+        _cand("date", "15 March 2027", "the exam is on 15 March 2027"),
+        RULES, TODAY)
+    assert lane == "IGNORE" and "future" in reason
+
+
+def test_fee_needs_staleness_signal():
+    # Bare fee, no year anywhere: ignore (would only spam the queue).
+    lane, reason = classify_lane(
+        _cand("fee", "₹2,50,000", "the total fee is ₹2,50,000 per year"),
+        RULES, TODAY)
+    assert lane == "IGNORE" and "staleness signal" in reason
+    # Fee near current/future year: ignore.
+    lane, reason = classify_lane(
+        _cand("fee", "₹2,50,000", "fees 2026: the total is ₹2,50,000"),
+        RULES, TODAY)
+    assert lane == "IGNORE"
+    # Fee near an old year: verify.
+    lane, _ = classify_lane(
+        _cand("fee", "₹2,50,000", "fees for 2024: the total is ₹2,50,000"),
+        RULES, TODAY)
+    assert lane == "B"
+
+
+def test_fee_regex_requires_digit():
+    from lib.freshness_utils import FEE_RE
+    assert FEE_RE.search("pay Rs, later") is None
+    assert FEE_RE.search("pay Rs. 1,200 now").group(0) == "Rs. 1,200"
+    assert FEE_RE.search("₹4.9 lakh").group(0) == "₹4.9"
 
 
 def test_anchor_never_auto():

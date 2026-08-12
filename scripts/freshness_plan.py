@@ -52,6 +52,8 @@ from lib.freshness_utils import (load_rules, current_session, norm_ws,
 
 MODEL = "claude-sonnet-4-6"
 MAX_SOURCE_CHARS = 8000
+BATCH_SIZE = 25
+TIER_PRIORITY = {"T1P": 0, "T1": 1, "T2": 2, "T3": 3, "T4": 4}
 COLUMNS = ["slug", "item_id", "url", "tier", "field", "location", "claim_type",
            "lane", "matched_text", "context", "old_text", "new_text",
            "confidence", "reasoning", "source_url", "evidence_quote",
@@ -270,12 +272,24 @@ def process_post(slug, cands, ctx):
                          "reasoning": "unverifiable: %s" % why})
         return rows
 
+    excerpts = "\n\n".join("SOURCE %s:\n%s" % (u, relevant_excerpts(t, today))
+                           for u, t in source_texts.items())
+    # Chunk: some posts have 200+ candidates (allen-kota-fees hit 278 in the
+    # first live scan); one giant call truncates. 25 per call.
+    for lo in range(0, len(factual), BATCH_SIZE):
+        rows.extend(_plan_batch(factual[lo:lo + BATCH_SIZE], excerpts, title,
+                                source_texts, domains, ctx))
+    return rows
+
+
+def _plan_batch(factual, excerpts, title, source_texts, domains, ctx):
+    rules, today, llm_client, budget = (ctx["rules"], ctx["today"], ctx["llm"],
+                                        ctx["budget"])
+    rows = []
     cand_json = json.dumps([
         {"id": i, "claim_type": c["claim_type"], "location": c["location"],
          "matched_text": c["matched_text"], "context": c["context"]}
         for i, c in enumerate(factual)], ensure_ascii=False)
-    excerpts = "\n\n".join("SOURCE %s:\n%s" % (u, relevant_excerpts(t, today))
-                           for u, t in source_texts.items())
     prompt = PROMPT.format(today=today.isoformat(),
                            session=current_session(
                                today, rules.get("session_start_month", 4)),
@@ -404,6 +418,8 @@ def main():
 
     groups = [(slug, grp.to_dict("records"))
               for slug, grp in inv.groupby("slug") if slug not in done]
+    # Budget goes to high-value pages first.
+    groups.sort(key=lambda g: TIER_PRIORITY.get(str(g[1][0].get("tier", "")), 9))
     if a.limit:
         groups = groups[:a.limit]
 

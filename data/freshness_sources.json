@@ -3,7 +3,9 @@
   "exams": {
     "jee main":  {"urls": ["https://jeemain.nta.nic.in/"], "domains": ["jeemain.nta.nic.in", "nta.ac.in"]},
     "jee advanced": {"urls": ["https://jeeadv.ac.in/"], "domains": ["jeeadv.ac.in"]},
-    "neet":      {"urls": ["https://neet.nta.nic.in/"], "domains": ["neet.nta.nic.in", "nta.ac.in"]},
+    "neet":      {"urls": ["https://neet.nta.nic.in/", "https://mcc.nic.in/"], "domains": ["neet.nta.nic.in", "nta.ac.in", "mcc.nic.in"]},
+    "pte":       {"urls": ["https://www.pearsonpte.com/"], "domains": ["pearsonpte.com"]},
+    "atma":      {"urls": ["https://www.atmaaims.com/"], "domains": ["atmaaims.com"]},
     "cat":       {"urls": ["https://iimcat.ac.in/"], "domains": ["iimcat.ac.in"]},
     "gate":      {"urls": ["https://gate.iitr.ac.in/"], "domains": ["gate.iitr.ac.in", "gate.iitk.ac.in", "gate.iitb.ac.in", "gate.iitd.ac.in"]},
     "cuet":      {"urls": ["https://exams.nta.ac.in/CUET-UG/"], "domains": ["exams.nta.ac.in", "nta.ac.in", "cuet.nta.nic.in"]},
