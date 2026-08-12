@@ -19,6 +19,8 @@ SCRIPTS_IN_WORKFLOW = [
     "priority_scorer", "link_recommender", "anchor_refiner", "refine_audit_rewrites", "preview_link_insertions", "insert_planned_links", "preview_insertion_plans", "plan_insertions",
     "bulk_apply_links", "bulk_apply_audit", "link_health_report", "refresh_hub_data",
     "refresh_links", "snapshot", "rollback", "rollback_audit_rewrites", "check_url_health",
+    "generate_anchor_variants", "triage_review_links", "repair_table_cells",
+    "freshness_scan", "freshness_plan", "freshness_preview", "freshness_apply",
 ]
 
 

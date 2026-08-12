@@ -1,0 +1,15 @@
+{
+  "_comment": "Lane A = mechanical auto-apply, provable WITHOUT external facts. Starts deliberately narrow; grows only by owner-approved rules. Every rule carries `why`, which is recorded as the change's reasoning.",
+  "session_start_month": 4,
+  "date_bump_field": "",
+  "_date_bump_field_note": "Set to the Webflow field slug of the visible 'last updated' date once confirmed (policy: bump on Lane B factual changes only). Empty = no bumping.",
+  "lane_a_rules": [
+    {
+      "id": "session-rollover-current",
+      "claim_type": "session_range",
+      "locations": ["p", "li", "td"],
+      "context_regex": "(current|ongoing|this)\\s+(academic\\s+)?(year|session)",
+      "why": "Session range explicitly framed as the CURRENT session; rolling it forward is calendar arithmetic, not a factual assertion."
+    }
+  ]
+}

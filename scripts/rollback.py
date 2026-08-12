@@ -10,6 +10,10 @@ USAGE:
       --slugs aakash-institute-fee-structure,allen-kota-fees --apply
 
 Env: WEBFLOW_API_TOKEN
+
+2026-08-12: rollback now PUBLISHES restored items (Webflow PATCH only stages
+a draft; before this fix a rollback left the bad content live and the
+restore invisible until the next site publish). --no-publish to stage only.
 """
 
 import argparse, json, sys
@@ -17,8 +21,8 @@ from pathlib import Path
 import pandas as pd
 
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from lib.webflow_client import WebflowClient
-from lib.snapshots import restore_post
+from lib.webflow_client import WebflowClient, COLLECTIONS
+from lib.snapshots import restore_post, load_snapshot
 
 def main():
     p = argparse.ArgumentParser()
@@ -30,6 +34,8 @@ def main():
                         "snapshot_run_id workflow input to roll back exactly "
                         "what a previous run changed, nothing else.")
     p.add_argument("--apply", action="store_true")
+    p.add_argument("--no-publish", action="store_true",
+                   help="Leave restores staged as drafts (pre-2026-08-12 behavior).")
     a = p.parse_args()
 
     snap_dir = Path(a.from_snapshot)
@@ -63,21 +69,30 @@ def main():
     print(f"Snapshot: {snap_dir}")
     print(f"Slugs to restore: {len(targets)}")
     if not a.apply:
-        print(f"\nDRY-RUN. Would restore {len(targets)} posts.")
+        print(f"\nDRY-RUN. Would restore {len(targets)} posts (and publish"
+              f"{' NOT' if a.no_publish else ''} them).")
         print(f"First 10: {targets[:10]}")
         return
 
     client = WebflowClient()
-    results = []
+    results, restored_ids = [], []
     for i, slug in enumerate(targets, 1):
         try:
             r = restore_post(str(snap_dir), slug, client=client, dry_run=False)
             results.append(r)
+            restored_ids.append(load_snapshot(str(snap_dir), slug)["item_id"])
             if i % 25 == 0:
                 print(f"  {i}/{len(targets)}")
         except Exception as e:
             results.append({"slug": slug, "error": str(e)})
             print(f"  ERROR {slug}: {e}")
+
+    if restored_ids and not a.no_publish:
+        client.publish_items(COLLECTIONS["blog_posts"], restored_ids)
+        print(f"Published {len(restored_ids)} restored items")
+    elif restored_ids:
+        print("WARNING: --no-publish set; restores are STAGED DRAFTS only. "
+              "The previous (bad) content is still live until a publish.")
 
     Path("out").mkdir(exist_ok=True)
     pd.DataFrame(results).to_csv("out/rollback-log.csv", index=False)
