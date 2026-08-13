@@ -126,9 +126,10 @@ jobs:
       - name: Plan patches with source evidence (LLM, budget-capped)
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python scripts/freshness_plan.py --apply --max-llm-calls 700 --max-fetches 150
-        # 2026-08 sizing from the first live scan: ~617 calls for the full
-        # exam category in chunks of 25 candidates/call, ~$15-20/cycle.
+        run: python scripts/freshness_plan.py --apply --max-llm-calls 700 --max-fetches 400 --max-searches 150
+        # 2026-08 sizing from live batches: ~617 base calls/cycle. Search and
+        # fetch budgets raised 2026-08-13 (owner: verify deeper; batch 2
+        # exhausted 60 searches). ~$20-30/cycle all-in.
 
       - name: Build review preview + queue CSV
         run: python scripts/freshness_preview.py
