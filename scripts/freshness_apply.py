@@ -67,7 +67,7 @@ def apply_to_post(client, collections, item_id, rows, rules, log, a):
     fd = item.get("fieldData", {})
     bodies = get_blog_body(item)
     title = fd.get("name", "") or ""
-    patch, changed, bumped = {}, 0, False
+    patch, changed, bumped, staged = {}, 0, False, []
 
     for r in rows:
         field, old, new = r["field"], str(r["old_text"]), str(r["new_text"])
@@ -81,6 +81,7 @@ def apply_to_post(client, collections, item_id, rows, rules, log, a):
                 patch["name"] = new_title
                 title = new_title
                 changed += 1
+                staged.append(r)
                 log(r, "staged", "title substitution")
             else:
                 log(r, "skipped", "old_text no longer in live title")
@@ -95,19 +96,20 @@ def apply_to_post(client, collections, item_id, rows, rules, log, a):
             continue
         patch[field] = new_html
         changed += 1
+        staged.append(r)
         if str(r.get("confidence", "")) != "RULE":
             bumped = True
         log(r, "staged", "body substitution ok")
 
     if not changed:
-        return "no-change", []
+        return "no-change", [], []
     bump_field = rules.get("date_bump_field", "")
     if bumped and bump_field:
         patch[bump_field] = datetime.date.today().isoformat()
     if a.apply:
         client.update_item(collections["blog_posts"], item_id, patch)
         time.sleep(a.sleep)
-    return "patched", list(patch.keys())
+    return "patched", list(patch.keys()), staged
 
 
 def main():
@@ -186,9 +188,12 @@ def main():
     for (slug, item_id), rows in posts:
         processed += 1
         try:
-            status, fields = apply_to_post(client, COLLECTIONS, item_id, rows,
-                                           rules, log_row, a)
-            results[(slug, item_id)] = (status, rows)
+            status, fields, staged = apply_to_post(client, COLLECTIONS,
+                                                   item_id, rows, rules,
+                                                   log_row, a)
+            # Reconcile ONLY what was actually staged. Checking skipped rows
+            # produced 22 false mismatches in the 2026-08-13 live run.
+            results[(slug, item_id)] = (status, staged)
             if status == "patched":
                 patched_ids.append(item_id)
                 log_row({"slug": slug, "item_id": item_id,
