@@ -54,10 +54,10 @@ MODEL = "claude-sonnet-4-6"
 MAX_SOURCE_CHARS = 8000
 BATCH_SIZE = 25
 TIER_PRIORITY = {"T1P": 0, "T1": 1, "T2": 2, "T3": 3, "T4": 4}
-COLUMNS = ["slug", "item_id", "url", "tier", "field", "location", "claim_type",
-           "lane", "priority", "matched_text", "context", "old_text",
-           "new_text", "confidence", "reasoning", "source_url", "source_tier",
-           "evidence_quote", "status", "validation_error"]
+COLUMNS = ["slug", "item_id", "url", "tier", "field", "location", "block_id",
+           "claim_type", "lane", "priority", "matched_text", "context",
+           "old_text", "new_text", "confidence", "reasoning", "source_url",
+           "source_tier", "evidence_quote", "status", "validation_error"]
 TERMINAL = ("planned", "queued", "not-stale", "ignored", "dropped")
 
 STATE_LOCK = threading.Lock()
@@ -277,8 +277,21 @@ def corroboration_count(dec, source_texts):
 
 # ---------------------------------------------------------------- per post
 
+def _context_span(context, matched, words=3):
+    """A phrase of ±N words around `matched` inside its context, so the
+    apply-time substitution has enough text to be unambiguous."""
+    ctx = re.sub(r"\s+", " ", str(context)).strip()
+    pos = ctx.find(str(matched))
+    if pos == -1:
+        return str(matched)
+    before = ctx[:pos].split()[-words:]
+    after = ctx[pos + len(str(matched)):].split()[:words]
+    return " ".join(before + [str(matched)] + after)
+
+
 def plan_lane_a(cand, rules, today):
-    """Mechanical plans, $0. Currently: whitelisted session rollovers."""
+    """Mechanical plans, $0: whitelisted session rollovers and label year
+    bumps (owner 2026-08-13)."""
     row = dict(cand)
     if cand["claim_type"] == "session_range":
         target = current_session(today, rules.get("session_start_month", 4))
@@ -291,10 +304,81 @@ def plan_lane_a(cand, rules, today):
             "status": "planned" if m else "dropped",
             "validation_error": "" if m else "could not parse session range",
         })
+    elif cand["claim_type"] == "year":
+        old_span = _context_span(cand["context"], cand["matched_text"])
+        row.update({
+            "old_text": old_span,
+            "new_text": old_span.replace(str(cand["matched_text"]),
+                                         str(today.year), 1),
+            "confidence": "RULE",
+            "reasoning": cand["lane_reason"],
+            "status": "planned",
+        })
     else:
         row.update({"status": "dropped",
                     "validation_error": "no lane-a planner for claim_type"})
     return row
+
+
+DATA_CLAIMS = ("date", "numeric_date", "fee", "registration_phrase",
+               "session_range")
+
+
+def _unresolved_data(r):
+    """A data claim that is NOT affirmatively current: stale data may be
+    sitting on the page."""
+    if r.get("claim_type") not in DATA_CLAIMS:
+        return False
+    st = str(r.get("status", ""))
+    if st in ("planned", "not-stale"):
+        return False
+    why = str(r.get("reasoning", "")) + str(r.get("lane_reason", ""))
+    if st == "ignored" and "future" in why:
+        return False        # future date: already current
+    return True             # queued, dropped, error, ignored-as-passed
+
+
+def enforce_consistency(all_rows):
+    """VITEEE lesson (owner review 2026-08-13): a year label was bumped
+    2025->2026 in a table whose 'last date' cells kept 2025's dates, making
+    the page claim to be updated while showing stale data. Rule: a planned
+    year/session bump is HELD (queued) if unverified data claims share its
+    table, or its immediate context. Mutates rows in place."""
+    held_reason = (" [held for consistency: nearby dates/fees are not "
+                   "verified as current; bumping the year would mislabel "
+                   "stale data]")
+
+    def hold(r):
+        r["status"], r["confidence"] = "queued", "LOW"
+        r["reasoning"] = str(r.get("reasoning", "")) + held_reason
+
+    by_block = {}
+    for r in all_rows:
+        b = str(r.get("block_id", "") or "")
+        if b:
+            by_block.setdefault((r.get("field"), b), []).append(r)
+    for rows in by_block.values():
+        if any(_unresolved_data(r) for r in rows):
+            for r in rows:
+                if r.get("status") == "planned" and \
+                        r.get("claim_type") in ("year", "session_range"):
+                    hold(r)
+
+    by_field = {}
+    for r in all_rows:
+        by_field.setdefault(r.get("field"), []).append(r)
+    for rows in by_field.values():
+        unres = [str(u.get("matched_text", "")) for u in rows
+                 if _unresolved_data(u)
+                 and len(str(u.get("matched_text", ""))) >= 6]
+        if not unres:
+            continue
+        for r in rows:
+            if r.get("status") == "planned" and r.get("claim_type") == "year":
+                ctx = str(r.get("context", ""))
+                if any(u in ctx for u in unres):
+                    hold(r)
+    return all_rows
 
 
 def process_post(slug, cands, ctx):
@@ -383,7 +467,7 @@ def process_post(slug, cands, ctx):
             for j, i in enumerate(unver):
                 plan_rows[i] = redo[j]
 
-    return rows + plan_rows
+    return enforce_consistency(rows + plan_rows)
 
 
 def _plan_batch(factual, excerpts, title, source_texts, tiers, ctx):

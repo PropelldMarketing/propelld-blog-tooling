@@ -379,6 +379,90 @@ def test_claim_priority_window():
     assert claim_priority({"matched_text": "no date here"}, TODAY) == "normal"
 
 
+def test_block_id_on_table_candidates():
+    html = ("<p>CAT 2024 intro.</p>"
+            "<table><tr><td><p>VITEEE 2025</p></td>"
+            "<td><p>20 April 2025</p></td></tr></table>")
+    cands = extract_candidates(html, "post-body")
+    td = [c for c in cands if c["location"] == "td"]
+    assert td and all(c["block_id"] == "table-0" for c in td)
+    assert all(c["block_id"] == "" for c in cands if c["location"] == "p")
+
+
+def test_label_year_bump_rule():
+    # Prose label with last year's date -> Lane A.
+    lane, reason = classify_lane(
+        _cand("year", "2025", "Check the NEET 2025 syllabus and exam pattern"),
+        RULES, TODAY)
+    assert lane == "A" and "label-year-bump" in reason
+    # Adjacent real date -> NOT mechanical.
+    lane, _ = classify_lane(
+        _cand("year", "2025",
+              "NEET 2025 syllabus, exam on 15 March 2025 in centres"),
+        RULES, TODAY)
+    assert lane != "A"
+    # Table location -> not mechanical.
+    lane, _ = classify_lane(
+        _cand("year", "2025", "NEET 2025 syllabus overview", location="td"),
+        RULES, TODAY)
+    assert lane != "A"
+    # Two years back -> not the simple bump.
+    lane, _ = classify_lane(
+        _cand("year", "2024", "NEET 2024 syllabus overview"), RULES, TODAY)
+    assert lane != "A"
+
+
+def test_lane_a_year_planner():
+    sys.path.insert(0, str(REPO / "scripts"))
+    from freshness_plan import plan_lane_a
+    cand = {"claim_type": "year", "matched_text": "2025",
+            "context": "Check the NEET 2025 syllabus and exam pattern",
+            "lane_reason": "label-year-bump", "field": "post-body",
+            "location": "p", "slug": "x"}
+    row = plan_lane_a(cand, RULES, TODAY)
+    assert row["status"] == "planned" and row["confidence"] == "RULE"
+    assert "2026" in row["new_text"] and "2025" in row["old_text"]
+    assert row["old_text"] != "2025"  # context span, not the bare year
+
+
+def test_consistency_pass_holds_table_year_bump():
+    sys.path.insert(0, str(REPO / "scripts"))
+    from freshness_plan import enforce_consistency
+    rows = [
+        {"field": "post-body", "block_id": "table-0", "claim_type": "year",
+         "status": "planned", "confidence": "MEDIUM", "reasoning": "",
+         "matched_text": "2025", "context": "VITEEE 2025"},
+        {"field": "post-body", "block_id": "table-0", "claim_type": "date",
+         "status": "queued", "confidence": "LOW",
+         "reasoning": "unverifiable: x", "matched_text": "20 April 2025",
+         "context": "20 April 2025"},
+    ]
+    enforce_consistency(rows)
+    assert rows[0]["status"] == "queued"
+    assert "consistency" in rows[0]["reasoning"]
+    # And with the date VERIFIED (planned), the year bump stands.
+    rows2 = [dict(rows[0], status="planned", reasoning=""),
+             dict(rows[1], status="planned", reasoning="")]
+    enforce_consistency(rows2)
+    assert rows2[0]["status"] == "planned"
+
+
+def test_consistency_pass_context_coupling_in_prose():
+    sys.path.insert(0, str(REPO / "scripts"))
+    from freshness_plan import enforce_consistency
+    rows = [
+        {"field": "post-body", "block_id": "", "claim_type": "year",
+         "status": "planned", "confidence": "HIGH", "reasoning": "",
+         "matched_text": "2025",
+         "context": "JEE 2025 exam, last date 10 April 2025 to apply"},
+        {"field": "post-body", "block_id": "", "claim_type": "date",
+         "status": "queued", "confidence": "LOW", "reasoning": "unverifiable",
+         "matched_text": "10 April 2025", "context": "last date 10 April 2025"},
+    ]
+    enforce_consistency(rows)
+    assert rows[0]["status"] == "queued"
+
+
 def test_parse_claim_date():
     from lib.freshness_utils import parse_claim_date
     import datetime as dt

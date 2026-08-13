@@ -31,8 +31,8 @@ from lib.freshness_utils import (extract_candidates, scan_title, classify_lane,
                                  load_rules, claim_priority)
 
 COLUMNS = ["slug", "item_id", "url", "category", "tier", "field", "location",
-           "claim_type", "matched_text", "context", "lane", "lane_reason",
-           "priority"]
+           "block_id", "claim_type", "matched_text", "context", "lane",
+           "lane_reason", "priority"]
 
 
 def load_tier_map(tier_file, additions):

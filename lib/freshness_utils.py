@@ -50,6 +50,13 @@ CLAIM_PATTERNS = [
     ("year", YEAR_RE),          # last: broadest
 ]
 
+# Vocabulary of content-cycle labels ("NEET 2025 syllabus", "top colleges
+# 2025"): a previous-cycle year next to these is a label, not an event claim.
+LABEL_VOCAB_RE = re.compile(
+    r"\b(syllabus|fees?|admission|cut-?offs?|counsell?ing|rankings?|top|"
+    r"colleges?|exam|course|eligibility|pattern|books?|preparation|"
+    r"predictor|percentile|salary|scope)\b", re.I)
+
 HISTORICAL_MARKERS = re.compile(
     r"\b(in|back in|since|until|till|was|were|had|previous(?:ly)?|earlier|"
     r"compared (?:to|with)|history|introduced|launched|changed|before)\b", re.I)
@@ -102,7 +109,10 @@ def _location_of(node):
 def extract_candidates(html, field):
     """Scan one body field's HTML for staleness candidates.
 
-    Returns rows: {field, location, claim_type, matched_text, context}.
+    Returns rows: {field, location, claim_type, matched_text, context,
+    block_id}. block_id identifies the enclosing table ("table-N") so the
+    planner can enforce consistency: a year label must not be bumped while
+    dates/fees in the same table stay unverified (VITEEE lesson 2026-08-13).
     Overlapping matches are deduplicated: the first (most specific)
     claim_type wins for a given span.
     """
@@ -110,11 +120,14 @@ def extract_candidates(html, field):
     if not html or not html.strip():
         return out
     soup = BeautifulSoup(html, "html.parser")
+    table_idx = {id(t): i for i, t in enumerate(soup.find_all("table"))}
     for node in soup.find_all(string=True):
         text = str(node)
         if not text.strip():
             continue
         loc = _location_of(node)
+        tbl = node.find_parent("table")
+        block_id = "table-%d" % table_idx[id(tbl)] if tbl is not None else ""
         taken = []
         for ctype, rx in CLAIM_PATTERNS:
             for m in rx.finditer(text):
@@ -130,6 +143,7 @@ def extract_candidates(html, field):
                     "claim_type": ctype,
                     "matched_text": m.group(0),
                     "context": re.sub(r"\s+", " ", text[lo:hi]).strip(),
+                    "block_id": block_id,
                 })
     return out
 
@@ -240,9 +254,23 @@ def classify_lane(cand, rules, today=None):
 
     # Clear historical framing on bare years -> ignore.
     if cand["claim_type"] == "year" and years:
-        window = ctx
-        if max(years) <= today.year - 2 and HISTORICAL_MARKERS.search(window):
+        if max(years) <= today.year - 2 and HISTORICAL_MARKERS.search(ctx):
             return "IGNORE", "historical reference (marker word near old year)"
+        # Label year bumps (owner 2026-08-13): a previous-cycle year acting
+        # as a content label in prose ("NEET 2025 syllabus") is calendar
+        # arithmetic. Guards: prose only, exactly last year, label vocab,
+        # no historical framing, and NO adjacent date/fee (those need
+        # verification; the planner's consistency pass also protects
+        # against mislabeling stale data).
+        if (rules.get("enable_label_year_bump", True)
+                and max(years) == today.year - 1
+                and cand["location"] in ("p", "li")
+                and LABEL_VOCAB_RE.search(ctx)
+                and not HISTORICAL_MARKERS.search(ctx)
+                and not DATE_RE.search(ctx)
+                and not FEE_RE.search(ctx)):
+            return "A", ("label-year-bump: previous-cycle content label in "
+                         "prose, no adjacent data claims")
         return "LLM", "old year, framing unclear"
 
     # Dates in the future are not stale (2026-08 triage refinement: the
