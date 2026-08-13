@@ -2,6 +2,13 @@
   "_comment": "Lane A = mechanical auto-apply, provable WITHOUT external facts. Starts deliberately narrow; grows only by owner-approved rules. Every rule carries `why`, which is recorded as the change's reasoning.",
   "session_start_month": 4,
   "date_bump_field": "",
+  "relevance_window_days": 45,
+  "_relevance_note": "Owner policy 2026-08-13: dated events that passed more than this many days ago are IGNOREd (history, not staleness). Events from the window onward, and future ones, are processed; those within [now-window, now+90d] are priority=high and planned first.",
+  "autonomy": {
+    "_comment": "The autonomy dial. HIGH-confidence changes in auto_locations may auto-apply; HIGH in other locations is capped to MEDIUM (queues); never_locations always queue and are never edited. Promote a location here after its precision is proven over review batches. No code changes needed.",
+    "auto_locations": ["p", "li"],
+    "never_locations": ["a"]
+  },
   "_date_bump_field_note": "Set to the Webflow field slug of the visible 'last updated' date once confirmed (policy: bump on Lane B factual changes only). Empty = no bumping.",
   "lane_a_rules": [
     {

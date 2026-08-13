@@ -28,10 +28,11 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from lib.freshness_utils import (extract_candidates, scan_title, classify_lane,
-                                 load_rules)
+                                 load_rules, claim_priority)
 
 COLUMNS = ["slug", "item_id", "url", "category", "tier", "field", "location",
-           "claim_type", "matched_text", "context", "lane", "lane_reason"]
+           "claim_type", "matched_text", "context", "lane", "lane_reason",
+           "priority"]
 
 
 def load_tier_map(tier_file, additions):
@@ -125,7 +126,11 @@ def main():
                 w.writerow({"slug": post["slug"], "item_id": post["item_id"],
                             "url": meta["url"], "category": meta["category"],
                             "tier": meta["tier"], "lane": lane,
-                            "lane_reason": reason, **c})
+                            "lane_reason": reason,
+                            "priority": claim_priority(
+                                c, today,
+                                rules.get("relevance_window_days", 45)),
+                            **c})
             f.flush()  # checkpoint per post
             if a.limit and funnel["posts_scanned"] >= a.limit:
                 break

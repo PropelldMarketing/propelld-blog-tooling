@@ -162,6 +162,46 @@ def _years_in(s):
     return [int(y) for y in YEAR_RE.findall(s or "")]
 
 
+_MONTH_NUM = {m: i + 1 for i, m in enumerate(MONTHS)}
+_MONTH_NUM.update({m: i + 1 for i, m in enumerate(MONTHS_ABBR)})
+
+
+def parse_claim_date(text):
+    """Parse a DATE_RE/NUMERIC_DATE match into a datetime.date, else None."""
+    t = str(text).strip()
+    m = re.search(r"\b(\d{1,2})[/.](\d{1,2})[/.](20\d{2})\b", t)
+    if m:
+        d, mo, y = int(m.group(1)), int(m.group(2)), int(m.group(3))
+        try:
+            return datetime.date(y, mo, d)
+        except ValueError:
+            return None
+    mo = None
+    for name, num in _MONTH_NUM.items():
+        if re.search(r"\b%s" % name, t, re.I):
+            mo = num
+            break
+    ys = _years_in(t)
+    dm = re.search(r"\b(\d{1,2})(?:st|nd|rd|th)?\b", t)
+    if mo and ys:
+        try:
+            return datetime.date(ys[0], mo, int(dm.group(1)) if dm else 1)
+        except ValueError:
+            return None
+    return None
+
+
+def claim_priority(cand, today=None, window_days=45):
+    """'high' for events from ~last month through the near future,
+    'normal' otherwise. Owner policy 2026-08-13."""
+    today = today or datetime.date.today()
+    d = parse_claim_date(cand.get("matched_text", ""))
+    if d and today - datetime.timedelta(days=window_days) <= d <= \
+            today + datetime.timedelta(days=90):
+        return "high"
+    return "normal"
+
+
 def classify_lane(cand, rules, today=None):
     """Deterministic triage. Returns (lane, reason).
 
@@ -211,6 +251,15 @@ def classify_lane(cand, rules, today=None):
         ctx_years = _years_in(cand["matched_text"])
         if ctx_years and max(ctx_years) > today.year:
             return "IGNORE", "date is in the future"
+        # Relevance window (owner policy 2026-08-13): events that passed
+        # more than ~1 month ago are history, not staleness. Don't chase
+        # them; next cycle's year-bump handles the page when its NEW
+        # edition becomes current.
+        d = parse_claim_date(cand["matched_text"])
+        window = rules.get("relevance_window_days", 45)
+        if d and d < today - datetime.timedelta(days=window):
+            return "IGNORE", ("event passed %s; outside relevance window "
+                              "(%dd)" % (d.isoformat(), window))
         return "B", "date claim, verify against source"
 
     # A bare fee amount carries NO staleness signal by itself; without a

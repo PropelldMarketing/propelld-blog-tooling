@@ -55,9 +55,9 @@ MAX_SOURCE_CHARS = 8000
 BATCH_SIZE = 25
 TIER_PRIORITY = {"T1P": 0, "T1": 1, "T2": 2, "T3": 3, "T4": 4}
 COLUMNS = ["slug", "item_id", "url", "tier", "field", "location", "claim_type",
-           "lane", "matched_text", "context", "old_text", "new_text",
-           "confidence", "reasoning", "source_url", "evidence_quote",
-           "status", "validation_error"]
+           "lane", "priority", "matched_text", "context", "old_text",
+           "new_text", "confidence", "reasoning", "source_url", "source_tier",
+           "evidence_quote", "status", "validation_error"]
 TERMINAL = ("planned", "queued", "not-stale", "ignored", "dropped")
 
 STATE_LOCK = threading.Lock()
@@ -73,12 +73,77 @@ def load_sources(path):
 
 def exam_key_for(post_title, slug, sources):
     hay = ("%s %s" % (post_title, slug.replace("-", " "))).lower()
+    for alias, canonical in sources.get("aliases", {}).items():
+        hay = hay.replace(alias, canonical)
     best = None
     for key in sources["exams"]:
-        if re.search(r"\b%s\b" % re.escape(key), hay):
+        # "s?" tolerates plurals: "jee mains" matched nothing in batch 1.
+        if re.search(r"\b%ss?\b" % re.escape(key), hay):
             if best is None or len(key) > len(best):
                 best = key  # longest match wins ("jee advanced" over "jee")
     return best
+
+
+def tier_of(url, sources):
+    """Audit gate for any URL the discovery step proposes: 'official',
+    'secondary', or None (unknown domain, never used)."""
+    try:
+        host = urlparse(url).netloc.lower().lstrip("www.")
+    except Exception:
+        return None
+    def _match(domains):
+        return any(host == d or host.endswith("." + d) for d in domains)
+    for entry in sources["exams"].values():
+        if _match(entry["domains"]):
+            return "official"
+    if _match(sources["fallback"]["domains"]):
+        return "official"
+    if _match(sources.get("secondary_domains", [])):
+        return "secondary"
+    return None
+
+
+DISCOVER_PROMPT = """Find web pages that state the CURRENT (as of {today}) values for these possibly-outdated claims from an article titled "{title}":
+
+{claims}
+
+Search for official exam-body / institute pages first, then major Indian education portals. Reply with ONLY JSON: {{"urls": ["...", ...]}} (up to 5 URLs, most authoritative first). No commentary."""
+
+
+def discover_sources(llm_client, title, claims, sources, budget, today):
+    """LLM web-search discovery of source URLs. The URLs are NOT trusted:
+    tier_of() rejects unknown domains, and every page is fetched + evidence
+    must appear verbatim in the fetched text like any other source."""
+    with STATE_LOCK:
+        if budget["searches"] <= 0:
+            return {}, {}
+        budget["searches"] -= 1
+    claims_txt = "\n".join("- %s (found as: %s)" %
+                           (c["context"][:160], c["matched_text"])
+                           for c in claims[:8])
+    try:
+        resp = llm_client.messages.create(
+            model=MODEL, max_tokens=1500,
+            tools=[{"type": "web_search_20250305", "name": "web_search",
+                    "max_uses": 3}],
+            messages=[{"role": "user", "content": DISCOVER_PROMPT.format(
+                today=today.isoformat(), title=title, claims=claims_txt)}])
+        text = "".join(b.text for b in resp.content
+                       if getattr(b, "type", "") == "text")
+        start = text.find("{")
+        obj, _ = json.JSONDecoder().raw_decode(text[start:])
+        urls = obj.get("urls", [])[:5]
+    except Exception:
+        return {}, {}
+    texts, tiers = {}, {}
+    for u in urls:
+        t = tier_of(u, sources)
+        if t is None:
+            continue  # audit: unknown domains are never used
+        page, err = fetch_source_text(u, budget)
+        if page:
+            texts[u], tiers[u] = page, t
+    return texts, tiers
 
 
 def fetch_source_text(url, budget):
@@ -158,7 +223,7 @@ def call_llm(client, prompt, budget):
         if budget["llm"] <= 0:
             raise RuntimeError("LLM call budget exhausted")
         budget["llm"] -= 1
-    resp = client.messages.create(model=MODEL, max_tokens=4000,
+    resp = client.messages.create(model=MODEL, max_tokens=8000,
                                   messages=[{"role": "user", "content": prompt}])
     text = resp.content[0].text
     start = text.find("{")
@@ -173,16 +238,11 @@ def call_llm(client, prompt, budget):
 
 # ---------------------------------------------------------------- validation
 
-def domain_ok(url, domains):
-    try:
-        host = urlparse(url).netloc.lower()
-    except Exception:
-        return False
-    return any(host == d or host.endswith("." + d) for d in domains)
+def validate_decision(dec, cand, source_texts, tiers):
+    """Full code-side validation. Returns (ok, error).
 
-
-def validate_decision(dec, cand, source_texts, domains):
-    """Full code-side validation. Returns (ok, error)."""
+    `tiers` maps every audited, fetched source URL -> 'official'/'secondary'.
+    Citing anything outside it (unfetched or unknown domain) is rejected."""
     old, new = dec.get("old_text", ""), dec.get("new_text", "")
     ev, src = dec.get("evidence_quote", ""), dec.get("source_url", "")
     if not old or not new:
@@ -194,8 +254,8 @@ def validate_decision(dec, cand, source_texts, domains):
         return False, "not pure substitution: %s" % why
     if not ev:
         return False, "missing evidence_quote"
-    if not src or not domain_ok(src, domains):
-        return False, "source_url not on whitelist: %s" % src
+    if not src or src not in tiers:
+        return False, "source_url not among audited fetched sources: %s" % src
     stext = source_texts.get(src, "")
     if norm_ws(ev).lower() not in stext.lower():
         return False, "evidence_quote not verbatim in fetched source"
@@ -203,6 +263,16 @@ def validate_decision(dec, cand, source_texts, domains):
     if not ok:
         return False, "changed tokens not in evidence: %s" % missing
     return True, ""
+
+
+def corroboration_count(dec, source_texts):
+    """Distinct domains whose fetched text supports the changed fact tokens."""
+    doms = set()
+    for u, txt in source_texts.items():
+        ok, _ = evidence_supports(dec["old_text"], dec["new_text"], txt)
+        if ok:
+            doms.add(urlparse(u).netloc.lower())
+    return len(doms)
 
 
 # ---------------------------------------------------------------- per post
@@ -254,38 +324,94 @@ def process_post(slug, cands, ctx):
     title = ctx["titles"].get(slug, "")
     key = exam_key_for(title, slug, sources)
     entry = sources["exams"].get(key) if key else None
-    source_texts, fetch_errs = {}, []
+    source_texts, tiers, fetch_errs = {}, {}, []
     if entry:
         for u in entry["urls"]:
             text, err = fetch_source_text(u, budget)
             if text:
-                source_texts[u] = text
+                source_texts[u], tiers[u] = text, "official"
             elif err:
                 fetch_errs.append("%s: %s" % (u, err))
-    domains = (entry or sources["fallback"])["domains"]
+
+    # Discovery pass 1 (2026-08-13 owner direction, go deeper): no mapping
+    # or nothing fetchable -> web-search for sources. URLs are audited by
+    # tier_of(); unknown domains are never used.
+    discovery_used = False
+    if not source_texts and llm_client is not None:
+        discovery_used = True
+        dt, dtiers = discover_sources(llm_client, title, factual, sources,
+                                      budget, today)
+        source_texts.update(dt)
+        tiers.update(dtiers)
 
     if not source_texts:
-        why = ("no source mapping for post" if not entry
+        why = ("no source found via mapping or discovery" if not entry
                else "; ".join(fetch_errs)[:200])
         for c in factual:
             rows.append({**c, "status": "queued", "confidence": "LOW",
                          "reasoning": "unverifiable: %s" % why})
         return rows
 
-    excerpts = "\n\n".join("SOURCE %s:\n%s" % (u, relevant_excerpts(t, today))
-                           for u, t in source_texts.items())
-    # Chunk: some posts have 200+ candidates (allen-kota-fees hit 278 in the
-    # first live scan); one giant call truncates. 25 per call.
-    for lo in range(0, len(factual), BATCH_SIZE):
-        rows.extend(_plan_batch(factual[lo:lo + BATCH_SIZE], excerpts, title,
-                                source_texts, domains, ctx))
-    return rows
+    def plan_over(cands):
+        excerpts = "\n\n".join(
+            "SOURCE %s:\n%s" % (u, relevant_excerpts(t, today))
+            for u, t in source_texts.items())
+        # Chunk: some posts have 200+ candidates (allen-kota-fees hit 278
+        # in the first live scan); one giant call truncates. 25 per call.
+        out = []
+        for lo in range(0, len(cands), BATCH_SIZE):
+            out.extend(_plan_batch(cands[lo:lo + BATCH_SIZE], excerpts, title,
+                                   source_texts, tiers, ctx))
+        return out
+
+    plan_rows = plan_over(factual)
+
+    # Discovery pass 2: claims the LLM judged unverifiable against the
+    # mapped sources get one web-search round for additional sources.
+    unver = [i for i, r in enumerate(plan_rows)
+             if r.get("status") == "queued"
+             and str(r.get("reasoning", "")).startswith("unverifiable")]
+    if unver and not discovery_used and llm_client is not None:
+        dt, dtiers = discover_sources(llm_client, title,
+                                      [factual[i] for i in unver], sources,
+                                      budget, today)
+        new_urls = set(dt) - set(source_texts)
+        if new_urls:
+            source_texts.update(dt)
+            tiers.update(dtiers)
+            redo = plan_over([factual[i] for i in unver])
+            for j, i in enumerate(unver):
+                plan_rows[i] = redo[j]
+
+    return rows + plan_rows
 
 
-def _plan_batch(factual, excerpts, title, source_texts, domains, ctx):
+def _plan_batch(factual, excerpts, title, source_texts, tiers, ctx):
     rules, today, llm_client, budget = (ctx["rules"], ctx["today"], ctx["llm"],
                                         ctx["budget"])
     rows = []
+
+    def finalize_tiered(c, d):
+        """Apply the secondary-source audit policy, then location ceilings.
+        Secondary sources NEVER reach HIGH (never auto-apply); a secondary
+        fact needs corroboration on 2+ distinct domains for MEDIUM."""
+        src_tier = tiers.get(d.get("source_url", ""), "official")
+        if src_tier == "secondary":
+            n = corroboration_count(d, source_texts)
+            if n >= 2:
+                if str(d.get("confidence", "")).upper() == "HIGH":
+                    d["confidence"] = "MEDIUM"
+                d["reasoning"] = (str(d.get("reasoning", "")) +
+                                  " [secondary sources, corroborated on %d "
+                                  "domains: capped to MEDIUM]" % n)
+            else:
+                d["confidence"] = "LOW"
+                d["reasoning"] = (str(d.get("reasoning", "")) +
+                                  " [single secondary source: needs "
+                                  "corroboration, queued]")
+        row = _finalize(c, d, rules)
+        row["source_tier"] = src_tier
+        return row
     cand_json = json.dumps([
         {"id": i, "claim_type": c["claim_type"], "location": c["location"],
          "matched_text": c["matched_text"], "context": c["context"]}
@@ -301,9 +427,16 @@ def _plan_batch(factual, excerpts, title, source_texts, domains, ctx):
 
     try:
         decisions = run_round(prompt)
-    except Exception as e:
-        return rows + [{**c, "status": "error: llm %s" % str(e)[:150]}
-                       for c in factual]
+    except Exception:
+        # One retry: truncated/malformed JSON killed a full 25-candidate
+        # batch in the 2026-08 canary.
+        try:
+            decisions = run_round(
+                prompt + "\n\nYour previous reply was not valid, complete "
+                "JSON. Reply again with ONLY the complete JSON object.")
+        except Exception as e:
+            return rows + [{**c, "status": "error: llm %s" % str(e)[:150]}
+                           for c in factual]
 
     retry_items, resolved = [], {}
     for i, c in enumerate(factual):
@@ -323,9 +456,9 @@ def _plan_batch(factual, excerpts, title, source_texts, domains, ctx):
             resolved[i] = {**c, "status": "queued", "confidence": "LOW",
                            "reasoning": "unverifiable: %s" % d.get("reasoning", "")}
         elif v == "stale":
-            ok, err = validate_decision(d, c, source_texts, domains)
+            ok, err = validate_decision(d, c, source_texts, tiers)
             if ok:
-                resolved[i] = _finalize(c, d)
+                resolved[i] = finalize_tiered(c, d)
             else:
                 retry_items.append((i, c, err))
         else:
@@ -344,8 +477,8 @@ def _plan_batch(factual, excerpts, title, source_texts, domains, ctx):
         for i, c, err in retry_items:
             d = decisions2.get(i)
             if d and d.get("verdict") == "stale":
-                ok, err2 = validate_decision(d, c, source_texts, domains)
-                resolved[i] = (_finalize(c, d) if ok else
+                ok, err2 = validate_decision(d, c, source_texts, tiers)
+                resolved[i] = (finalize_tiered(c, d) if ok else
                                {**c, "status": "dropped",
                                 "validation_error": err2})
             else:
@@ -355,14 +488,28 @@ def _plan_batch(factual, excerpts, title, source_texts, domains, ctx):
     return rows
 
 
-def _finalize(c, d):
+def _finalize(c, d, rules=None):
+    """Policy ceilings enforced in code, not prompts. The autonomy dial lives
+    in data/freshness_rules.json ("autonomy"): promoting a location to
+    auto-apply after its precision is proven is a config edit, not code.
+
+    Owner policy 2026-08-13: start with body prose (p, li) only; headings,
+    titles, table cells queue (a heading's year may label year-specific
+    content below it, e.g. "Allen Kota Results 2025"). Anchors never edit:
+    their text mirrors a linked post's title (2026-08 canary: 9 HIGH rows)."""
+    auto = (rules or {}).get("autonomy", {})
+    auto_locs = auto.get("auto_locations", ["p", "li"])
+    never_locs = auto.get("never_locations", ["a"])
     conf = d.get("confidence", "LOW").upper()
     reasoning = d.get("reasoning", "")
-    # Policy ceilings enforced in code, not prompts:
-    if c["location"] in ("title", "td") and conf == "HIGH":
+    if c["location"] not in auto_locs and c["location"] not in never_locs \
+            and conf == "HIGH":
         conf = "MEDIUM"
         reasoning += " [capped to MEDIUM: %s changes always queue]" % c["location"]
     status = "planned" if conf in ("HIGH", "MEDIUM") else "queued"
+    if c["location"] in never_locs:
+        conf, status = "LOW", "queued"
+        reasoning += " [anchor text: fix by updating the linked post's title]"
     return {**c, "old_text": d["old_text"], "new_text": d["new_text"],
             "confidence": conf, "reasoning": reasoning,
             "source_url": d.get("source_url", ""),
@@ -390,6 +537,8 @@ def main():
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--max-llm-calls", type=int, default=400)
     ap.add_argument("--max-fetches", type=int, default=150)
+    ap.add_argument("--max-searches", type=int, default=60,
+                    help="Web-search discovery calls (source-finding).")
     ap.add_argument("--model", default=MODEL)
     a = ap.parse_args()
     if not (a.apply or a.dry_run):
@@ -418,8 +567,14 @@ def main():
 
     groups = [(slug, grp.to_dict("records"))
               for slug, grp in inv.groupby("slug") if slug not in done]
-    # Budget goes to high-value pages first.
-    groups.sort(key=lambda g: TIER_PRIORITY.get(str(g[1][0].get("tier", "")), 9))
+    # Budget: recency-priority posts first (owner policy 2026-08-13), then
+    # high-value tiers.
+    def _grp_key(g):
+        recs = g[1]
+        has_high = any(str(r.get("priority", "")) == "high" for r in recs)
+        return (0 if has_high else 1,
+                TIER_PRIORITY.get(str(recs[0].get("tier", "")), 9))
+    groups.sort(key=_grp_key)
     if a.limit:
         groups = groups[:a.limit]
 
@@ -429,7 +584,8 @@ def main():
         llm_client = anthropic.Anthropic()
     ctx = {"rules": load_rules(a.rules), "sources": load_sources(a.sources),
            "today": datetime.date.today(), "llm": llm_client,
-           "budget": {"llm": a.max_llm_calls, "fetches": a.max_fetches},
+           "budget": {"llm": a.max_llm_calls, "fetches": a.max_fetches,
+                      "searches": a.max_searches},
            "dry": not a.apply, "titles": titles}
 
     Path(a.output).parent.mkdir(parents=True, exist_ok=True)

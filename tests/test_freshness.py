@@ -84,7 +84,8 @@ def test_ambiguous_old_year_goes_to_llm():
 
 
 def test_factual_claims_go_to_lane_b():
-    for ct, txt in [("date", "15 March 2025"),
+    # In-window date (July 2026 vs test-today 2026-08-12) and phrases -> B.
+    for ct, txt in [("date", "20 July 2026"),
                     ("registration_phrase", "registration is open")]:
         lane, _ = classify_lane(_cand(ct, txt, "x %s y" % txt), RULES, TODAY)
         assert lane == "B", ct
@@ -253,7 +254,42 @@ def test_should_apply_policy():
                              "confidence": "HIGH"}, True, False)[0]
 
 
-def test_plan_validators_reject_unlisted_domain():
+def test_finalize_policy_ceilings():
+    sys.path.insert(0, str(REPO / "scripts"))
+    from freshness_plan import _finalize
+    d = {"old_text": "CAT 2024", "new_text": "CAT 2026", "confidence": "HIGH",
+         "reasoning": "r", "evidence_quote": "e", "source_url": "s"}
+    base = {"slug": "x", "field": "post-body"}
+    # Body prose keeps HIGH -> planned (auto-apply eligible).
+    r = _finalize({**base, "location": "p"}, dict(d), RULES)
+    assert r["confidence"] == "HIGH" and r["status"] == "planned"
+    # Titles, table cells, headings: capped to MEDIUM -> needs approval.
+    for loc in ("title", "td", "h2", "h3"):
+        r = _finalize({**base, "location": loc}, dict(d), RULES)
+        assert r["confidence"] == "MEDIUM" and r["status"] == "planned", loc
+    # Anchor text: always queued, never applied.
+    r = _finalize({**base, "location": "a"}, dict(d), RULES)
+    assert r["status"] == "queued" and "anchor" in r["reasoning"]
+
+
+def test_finalize_autonomy_promotion_via_config():
+    """Promoting a location to auto-apply is a config edit, no code change."""
+    sys.path.insert(0, str(REPO / "scripts"))
+    from freshness_plan import _finalize
+    d = {"old_text": "CAT 2024", "new_text": "CAT 2026", "confidence": "HIGH",
+         "reasoning": "r", "evidence_quote": "e", "source_url": "s"}
+    base = {"slug": "x", "field": "post-body", "location": "h2"}
+    promoted = {"autonomy": {"auto_locations": ["p", "li", "h2"],
+                             "never_locations": ["a"]}}
+    r = _finalize(base, dict(d), promoted)
+    assert r["confidence"] == "HIGH" and r["status"] == "planned"
+    # And demoting everything (empty auto list) queues even prose HIGHs.
+    locked = {"autonomy": {"auto_locations": [], "never_locations": ["a"]}}
+    r = _finalize({**base, "location": "p"}, dict(d), locked)
+    assert r["confidence"] == "MEDIUM"
+
+
+def test_plan_validators_reject_unaudited_source():
     sys.path.insert(0, str(REPO / "scripts"))
     from freshness_plan import validate_decision
     cand = {"context": "exam on 15 March 2025 in centres"}
@@ -261,11 +297,12 @@ def test_plan_validators_reject_unlisted_domain():
            "new_text": "exam on 22 March 2026",
            "evidence_quote": "held on 22 March 2026",
            "source_url": "https://some-coaching-blog.com/x"}
+    # The cited URL was fetched but is NOT in the audited tiers map.
     ok, err = validate_decision(dec, cand,
                                 {"https://some-coaching-blog.com/x":
                                  "held on 22 march 2026"},
-                                ["nta.ac.in"])
-    assert not ok and "whitelist" in err
+                                {})
+    assert not ok and "audited" in err
 
 
 def test_plan_validators_accept_good_decision():
@@ -279,8 +316,77 @@ def test_plan_validators_accept_good_decision():
            "source_url": src}
     ok, err = validate_decision(
         dec, cand, {src: "notice: The examination will be held on 22 March 2026."},
-        ["jeemain.nta.nic.in", "nta.ac.in"])
+        {src: "official"})
     assert ok, err
+
+
+def test_tier_of_audit_gate():
+    sys.path.insert(0, str(REPO / "scripts"))
+    import json
+    from freshness_plan import tier_of
+    src_cfg = json.load(open(REPO / "data" / "freshness_sources.json"))
+    assert tier_of("https://jeemain.nta.nic.in/x", src_cfg) == "official"
+    assert tier_of("https://mcc.nic.in/ug", src_cfg) == "official"
+    assert tier_of("https://www.careers360.com/exams/x", src_cfg) == "secondary"
+    assert tier_of("https://engineering.careers360.com/x", src_cfg) == "secondary"
+    assert tier_of("https://random-coaching-blog.com/x", src_cfg) is None
+
+
+def test_exam_key_matches_plurals_and_aliases():
+    sys.path.insert(0, str(REPO / "scripts"))
+    import json
+    from freshness_plan import exam_key_for
+    src_cfg = json.load(open(REPO / "data" / "freshness_sources.json"))
+    assert exam_key_for("100 Marks in JEE Mains Percentile",
+                        "100-marks-in-jee-mains-percentile", src_cfg) == "jee main"
+    assert exam_key_for("", "ap-pgcet-exam", src_cfg) == "ap pgcet"
+    assert exam_key_for("", "ctet-exam", src_cfg) == "ctet"
+    assert exam_key_for("NEET-UG counselling", "x", src_cfg) == "neet"
+
+
+def test_corroboration_count():
+    sys.path.insert(0, str(REPO / "scripts"))
+    from freshness_plan import corroboration_count
+    dec = {"old_text": "fee is ₹1,000", "new_text": "fee is ₹1,200"}
+    texts = {"https://a.careers360.com/x": "the fee is Rs 1,200 now",
+             "https://shiksha.com/y": "application fee: ₹1,200",
+             "https://collegedunia.com/z": "fee unchanged at ₹1,000"}
+    assert corroboration_count(dec, texts) == 2
+
+
+def test_relevance_window_ignores_passed_events():
+    # Today is 2026-08-12 in tests: April 2026 passed -> ignore;
+    # July 2026 (within 45d) -> verify; future -> verify.
+    lane, reason = classify_lane(
+        _cand("date", "15 April 2026", "the exam was held on 15 April 2026"),
+        RULES, TODAY)
+    assert lane == "IGNORE" and "relevance window" in reason
+    lane, _ = classify_lane(
+        _cand("date", "20 July 2026", "counselling starts 20 July 2026"),
+        RULES, TODAY)
+    assert lane == "B"
+    lane, _ = classify_lane(
+        _cand("date", "10 December 2026", "the exam is on 10 December 2026"),
+        RULES, TODAY)
+    assert lane == "B"
+
+
+def test_claim_priority_window():
+    from lib.freshness_utils import claim_priority
+    assert claim_priority({"matched_text": "20 July 2026"}, TODAY) == "high"
+    assert claim_priority({"matched_text": "25 August 2026"}, TODAY) == "high"
+    assert claim_priority({"matched_text": "10 December 2026"}, TODAY) == "normal"
+    assert claim_priority({"matched_text": "no date here"}, TODAY) == "normal"
+
+
+def test_parse_claim_date():
+    from lib.freshness_utils import parse_claim_date
+    import datetime as dt
+    assert parse_claim_date("15 March 2025") == dt.date(2025, 3, 15)
+    assert parse_claim_date("March 15, 2025") == dt.date(2025, 3, 15)
+    assert parse_claim_date("15/03/2025") == dt.date(2025, 3, 15)
+    assert parse_claim_date("31/02/2025") is None
+    assert parse_claim_date("just 2025") is None
 
 
 if __name__ == "__main__":

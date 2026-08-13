@@ -8,7 +8,7 @@
     "atma":      {"urls": ["https://www.atmaaims.com/"], "domains": ["atmaaims.com"]},
     "cat":       {"urls": ["https://iimcat.ac.in/"], "domains": ["iimcat.ac.in"]},
     "gate":      {"urls": ["https://gate.iitr.ac.in/"], "domains": ["gate.iitr.ac.in", "gate.iitk.ac.in", "gate.iitb.ac.in", "gate.iitd.ac.in"]},
-    "cuet":      {"urls": ["https://exams.nta.ac.in/CUET-UG/"], "domains": ["exams.nta.ac.in", "nta.ac.in", "cuet.nta.nic.in"]},
+    "cuet":      {"urls": ["https://cuet.nta.nic.in/", "https://exams.nta.ac.in/CUET-UG/"], "domains": ["exams.nta.ac.in", "nta.ac.in", "cuet.nta.nic.in"]},
     "clat":      {"urls": ["https://consortiumofnlus.ac.in/"], "domains": ["consortiumofnlus.ac.in"]},
     "xat":       {"urls": ["https://xatonline.in/"], "domains": ["xatonline.in"]},
     "mat":       {"urls": ["https://mat.aima.in/"], "domains": ["mat.aima.in", "aima.in"]},
@@ -19,7 +19,7 @@
     "comedk":    {"urls": ["https://www.comedk.org/"], "domains": ["comedk.org"]},
     "wbjee":     {"urls": ["https://wbjeeb.nic.in/"], "domains": ["wbjeeb.nic.in"]},
     "mht cet":   {"urls": ["https://cetcell.mahacet.org/"], "domains": ["mahacet.org", "cetcell.mahacet.org"]},
-    "kcet":      {"urls": ["https://cetonline.karnataka.gov.in/kea/"], "domains": ["cetonline.karnataka.gov.in", "kea.kar.nic.in"]},
+    "kcet":      {"urls": ["https://kea.kar.nic.in/", "https://cetonline.karnataka.gov.in/kea/"], "domains": ["cetonline.karnataka.gov.in", "kea.kar.nic.in"]},
     "eamcet":    {"urls": ["https://eapcet.tgche.ac.in/", "https://cets.apsche.ap.gov.in/"], "domains": ["eapcet.tgche.ac.in", "eapcet.tsche.ac.in", "cets.apsche.ap.gov.in", "apsche.ap.gov.in"]},
     "eapcet":    {"urls": ["https://eapcet.tgche.ac.in/", "https://cets.apsche.ap.gov.in/"], "domains": ["eapcet.tgche.ac.in", "eapcet.tsche.ac.in", "cets.apsche.ap.gov.in", "apsche.ap.gov.in"]},
     "josaa":     {"urls": ["https://josaa.nic.in/"], "domains": ["josaa.nic.in"]},
@@ -35,7 +35,30 @@
     "nift":      {"urls": ["https://www.nift.ac.in/"], "domains": ["nift.ac.in", "exams.nta.ac.in"]},
     "nata":      {"urls": ["https://www.nata.in/"], "domains": ["nata.in"]},
     "ipmat":     {"urls": ["https://www.iimidr.ac.in/"], "domains": ["iimidr.ac.in", "iimrohtak.ac.in"]},
-    "nta":       {"urls": ["https://www.nta.ac.in/"], "domains": ["nta.ac.in", "exams.nta.ac.in"]}
+    "nta":       {"urls": ["https://www.nta.ac.in/"], "domains": ["nta.ac.in", "exams.nta.ac.in"]},
+    "ap pgcet":  {"urls": ["https://cets.apsche.ap.gov.in/"], "domains": ["cets.apsche.ap.gov.in", "apsche.ap.gov.in"]},
+    "ap polycet":{"urls": ["https://polycetap.nic.in/"], "domains": ["polycetap.nic.in"]},
+    "polycet":   {"urls": ["https://polycetap.nic.in/"], "domains": ["polycetap.nic.in"]},
+    "ctet":      {"urls": ["https://ctet.nic.in/"], "domains": ["ctet.nic.in"]},
+    "tnea":      {"urls": ["https://www.tneaonline.org/"], "domains": ["tneaonline.org", "tn.gov.in"]},
+    "csab":      {"urls": ["https://csab.nic.in/"], "domains": ["csab.nic.in", "josaa.nic.in"]},
+    "dcet":      {"urls": ["https://cetonline.karnataka.gov.in/kea/"], "domains": ["cetonline.karnataka.gov.in", "kea.kar.nic.in"]},
+    "cfa":       {"urls": ["https://www.cfainstitute.org/programs/cfa-program"], "domains": ["cfainstitute.org"]},
+    "cpc":       {"urls": ["https://www.aapc.com/certifications/cpc"], "domains": ["aapc.com"]},
+    "allen":     {"urls": ["https://www.allen.ac.in/"], "domains": ["allen.ac.in", "allen.in"]},
+    "aakash":    {"urls": ["https://www.aakash.ac.in/"], "domains": ["aakash.ac.in"]}
   },
-  "fallback": {"urls": [], "domains": ["nta.ac.in", "nic.in", "gov.in", "ac.in", "edu.in"]}
+  "aliases": {
+    "jee mains": "jee main",
+    "eapcet": "eamcet",
+    "neet ug": "neet",
+    "neet-ug": "neet"
+  },
+  "fallback": {"urls": [], "domains": ["nta.ac.in", "nic.in", "gov.in", "ac.in", "edu.in"]},
+  "_secondary_note": "Audited secondary tier. Discovery (LLM web search) may propose ANY url, but code only fetches domains listed here or official ones; evidence must appear verbatim in the fetched page; secondary-backed changes are capped at MEDIUM (never auto-apply) and need the same fact confirmed on 2+ distinct domains, else LOW.",
+  "secondary_domains": [
+    "careers360.com", "engineering.careers360.com", "medicine.careers360.com",
+    "shiksha.com", "collegedunia.com", "jagranjosh.com", "getmyuni.com",
+    "careerindia.com", "collegedekho.com"
+  ]
 }
