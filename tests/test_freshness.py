@@ -412,6 +412,31 @@ def test_label_year_bump_rule():
     assert lane != "A"
 
 
+def test_label_bump_requires_adjacency_and_blocks_data_references():
+    # Real false positives from the 2026-08-13 full run:
+    lane, _ = classify_lane(
+        _cand("year", "2025", "Based on 2025 performance data and trends"),
+        RULES, TODAY)
+    assert lane != "A", "data-reference year must not bump mechanically"
+    lane, _ = classify_lane(
+        _cand("year", "2025",
+              "(tentative 2026 + 2025 reference), seat matrix counselling"),
+        RULES, TODAY)
+    assert lane != "A", "reference year must not bump mechanically"
+    # Distant vocab is no longer enough; adjacency required.
+    lane, _ = classify_lane(
+        _cand("year", "2025",
+              "results announced in 2025 while the counselling portal stays"),
+        RULES, TODAY)
+    assert lane != "A"
+    # True labels still pass.
+    for ctx in ("The REET 2025 exam follows a set pattern",
+                "the CUET PG 2025 cycle. These are important",
+                "Check the NEET 2025 syllabus and pattern"):
+        lane, reason = classify_lane(_cand("year", "2025", ctx), RULES, TODAY)
+        assert lane == "A", ctx
+
+
 def test_lane_a_year_planner():
     sys.path.insert(0, str(REPO / "scripts"))
     from freshness_plan import plan_lane_a

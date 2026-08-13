@@ -55,7 +55,29 @@ CLAIM_PATTERNS = [
 LABEL_VOCAB_RE = re.compile(
     r"\b(syllabus|fees?|admission|cut-?offs?|counsell?ing|rankings?|top|"
     r"colleges?|exam|course|eligibility|pattern|books?|preparation|"
-    r"predictor|percentile|salary|scope)\b", re.I)
+    r"predictor|percentile|salary|scope|cycle|session|registration)\b", re.I)
+
+# A year in these framings states which year's DATA/EVENT is referenced;
+# bumping it would assert data that may not exist ("based on 2025
+# performance data", "2025 reference"). Found in the 2026-08-13 full run.
+LABEL_BLOCKER_RE = re.compile(
+    r"\b(based|data|reference|according|as per|compared|vs\.?|versus|"
+    r"report(?:ed|s)?|results?|statistics|trends?|analysis|actual|"
+    r"last year|previous)\b", re.I)
+
+
+def label_adjacent(context, year):
+    """True iff `year` is DIRECTLY adjacent (within 2 words) to a label
+    word in context, with no blocker word within 4 words either side."""
+    ctx = re.sub(r"\s+", " ", str(context))
+    for m in re.finditer(r"\b%s\b" % re.escape(str(year)), ctx):
+        before = ctx[:m.start()].split()
+        after = ctx[m.end():].split()
+        near = " ".join(before[-2:] + after[:2])
+        wide = " ".join(before[-4:] + after[:4])
+        if LABEL_VOCAB_RE.search(near) and not LABEL_BLOCKER_RE.search(wide):
+            return True
+    return False
 
 HISTORICAL_MARKERS = re.compile(
     r"\b(in|back in|since|until|till|was|were|had|previous(?:ly)?|earlier|"
@@ -265,7 +287,7 @@ def classify_lane(cand, rules, today=None):
         if (rules.get("enable_label_year_bump", True)
                 and max(years) == today.year - 1
                 and cand["location"] in ("p", "li")
-                and LABEL_VOCAB_RE.search(ctx)
+                and label_adjacent(ctx, cand["matched_text"])
                 and not HISTORICAL_MARKERS.search(ctx)
                 and not DATE_RE.search(ctx)
                 and not FEE_RE.search(ctx)):
